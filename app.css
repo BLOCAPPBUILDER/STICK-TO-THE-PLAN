@@ -58,7 +58,7 @@ h1, h2, h3{ margin:0; letter-spacing:-.01em; }
 svg{ width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; flex:none; }
 
 /* ---------- Hintergrund: weiche Farbflächen hinter dem Glas ---------- */
-/* Dunkel: das Standardfoto aus BLOC. Hell: Pexels-Foto 10955817 (Pexels-Lizenz). Beide geblurrt und abgedunkelt wie in BLOC. */
+/* Dunkel: das Standardfoto aus BLOC. Hell: Pexels-Foto 10955817 (Pexels-Lizenz), nur der obere, helle Teil (Himmel und Baumreihe). Beide geblurrt wie in BLOC, das helle kaum abgedunkelt. */
 .glas-bg{ position:fixed; inset:0; z-index:-1; overflow:hidden; pointer-events:none; background:var(--bg); }
 .glas-bg i{
   position:absolute; inset:-40px;
@@ -68,7 +68,8 @@ svg{ width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2; st
 .glas-bg::after{ content:""; position:absolute; inset:0; background:rgba(8,10,14,.2); }
 :root[data-theme="light"] .glas-bg i{
   background-image:url("img/hell-hintergrund.jpg");
-  filter:blur(26px) brightness(.66) saturate(1.25);
+  background-position:center bottom;
+  filter:blur(26px) brightness(.92) saturate(1.2);
 }
 :root[data-theme="light"] .glas-bg::after{
   background:linear-gradient(180deg, rgba(245,245,242,.44), rgba(245,245,242,.2) 45%, rgba(245,245,242,.6));
