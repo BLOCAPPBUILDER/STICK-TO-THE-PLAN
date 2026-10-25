@@ -542,11 +542,26 @@ function kopiere(text, knopf) {
   else notfall();
 }
 
+/* Öffentliche Adresse der App (GitHub Pages). Im Browser gilt die Adresse, unter der die App gerade läuft;
+ * die feste Adresse nur, wenn sie nicht über http(s) geöffnet ist (z. B. als Datei oder später in einer Store-App). */
+var APP_ADRESSE = "https://blocappbuilder.github.io/STICK-TO-THE-PLAN/";
+
+function appAdresse() {
+  if (!/^https?:$/.test(location.protocol)) return APP_ADRESSE;
+  return location.origin + location.pathname.replace(/index\.html$/, "");
+}
+
 function sicherungHtml() {
   return '<p class="hinweis">Deine Daten liegen nur auf diesem Gerät. Sichere sie ab und zu als Datei, bevor du den Browser-Speicher leerst.</p>' +
     '<div class="formular-knoepfe"><button type="button" class="knopf" data-aktion="exportieren">Datei sichern</button>' +
     '<label class="knopf knopf-zweit">Datei laden<input type="file" accept="application/json,.json" class="versteckt" data-datei="importieren"></label></div>' +
-    '<p class="fehler" data-fehler hidden></p>';
+    '<p class="fehler" data-fehler hidden></p>' +
+    '<h3 class="teilen-titel">App weitergeben</h3>' +
+    '<p class="hinweis">Mit diesem Link öffnet man die App im Browser und kann sie über „Zum Startbildschirm hinzufügen“ installieren. Deine Daten werden dabei nicht mitgeschickt.</p>' +
+    '<div class="app-link">' + esc(appAdresse()) + '</div>' +
+    '<div class="formular-knoepfe"><button type="button" class="knopf knopf-zweit" data-aktion="link-kopieren">Link kopieren</button>' +
+    (navigator.share ? '<button type="button" class="knopf knopf-zweit" data-aktion="link-teilen">Teilen …</button>' : '') +
+    '</div>';
 }
 
 function exportiere() {
@@ -690,10 +705,18 @@ document.addEventListener("click", function (e) {
       wendeThemaAn();
       break;
     case "sichern":
-      oeffneSheet("Sichern und laden", sicherungHtml(), "formular");
+      oeffneSheet("Sichern und teilen", sicherungHtml(), "formular");
       break;
     case "exportieren":
       exportiere();
+      break;
+    case "link-kopieren":
+      kopiere(appAdresse(), el);
+      break;
+    case "link-teilen":
+      navigator.share({ title: "Stick to the plan", url: appAdresse() }).catch(function (fehler) {
+        if (!fehler || fehler.name !== "AbortError") kopiere(appAdresse(), el);
+      });
       break;
     case "projekt-wechseln":
       ui.aktivesProjekt = id;

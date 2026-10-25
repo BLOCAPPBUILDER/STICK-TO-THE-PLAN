@@ -3,7 +3,7 @@
  * Bei jeder neuen Fassung FASSUNG hier und ?v= in index.html ändern.
  */
 
-var FASSUNG = "2026-10-25-1";
+var FASSUNG = "2026-10-25-2";
 var SPEICHER = "stick-to-the-plan-" + FASSUNG;
 var GRUNDGERUEST = [
   "./", "./index.html", "./app.css", "./daten.js", "./kern.js", "./app.js",
