@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stick to the plan – Einheitstest</title>
+<style>
+  body{ font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif; max-width:640px; margin:0 auto; padding:20px 16px; background:#f5f5f2; color:#1c1c1e; }
+  @media (prefers-color-scheme: dark){ body{ background:#121214; color:#f2f2f2; } }
+  li{ margin:6px 0; } .ok{ color:#2fa88a; font-weight:700; } .nein{ color:#e0393f; font-weight:700; }
+</style>
+</head>
+<body>
+<h1>Einheitstest</h1>
+<p id="zusammenfassung"></p>
+<ul id="liste"></ul>
+<script src="./daten.js"></script>
+<script src="./kern.js"></script>
+<script>
+  var ergebnisse = [];
+  function pruefe(name, bedingung) { ergebnisse.push({ name: name, ok: !!bedingung }); }
+
+  /* Speicher-Attrappe, damit der echte localStorage unberührt bleibt */
+  function attrappe(start) {
+    var m = start || {};
+    return {
+      getItem: function (k) { return Object.prototype.hasOwnProperty.call(m, k) ? m[k] : null; },
+      setItem: function (k, v) { m[k] = String(v); }
+    };
+  }
+
+  // Links
+  pruefe("Link ohne Schema bekommt https", sichererLink("open.spotify.com/track/x") === "https://open.spotify.com/track/x");
+  pruefe("javascript:-Link wird abgelehnt", sichererLink("javascript:alert(1)") === "");
+  pruefe("leerer Link ergibt leeren Text", sichererLink("   ") === "");
+  pruefe("Spotify erkannt", linkArt("https://open.spotify.com/track/x") === "Spotify");
+  pruefe("YouTube (youtu.be) erkannt", linkArt("https://youtu.be/abc") === "YouTube");
+  pruefe("YouTube (music) erkannt", linkArt("https://music.youtube.com/watch?v=abc") === "YouTube");
+  pruefe("fremder Link heißt Link", linkArt("https://example.com") === "Link");
+
+  // Erststart und Speichern
+  var erst = ladeDaten(attrappe());
+  pruefe("Erststart: genau ein Projekt", erst.projekte.length === 1);
+  pruefe("Erststart: Projekt ohne Inhalte und ohne Rubriken", erst.projekte[0].doings.length === 0 && erst.projekte[0].rubriken.length === 0);
+  pruefe("Erststart: Zeitmodus ist generisch", erst.projekte[0].zeitModus === "generisch");
+
+  var speicher = attrappe();
+  var d = ladeDaten(speicher);
+  d.projekte[0].doings.push({ id: "d1", rubrikId: null, text: "Test", notiz: "", prompt: "", faellig: "", erledigt: false, erstellt: 1, ordnung: 1 });
+  d.projekte[0].notizen.push({ id: "n1", text: "Lied", link: "https://youtu.be/abc", rubrikId: null, erstellt: 1, ordnung: 2 });
+  speichereDaten(d, speicher);
+  var zurueck = ladeDaten(speicher);
+  pruefe("Speichern und Laden ergibt denselben Stand", zurueck.projekte[0].doings.length === 1 && zurueck.projekte[0].notizen[0].link === "https://youtu.be/abc");
+
+  // Alter Stand (Fassung 1) wird ein Projekt
+  var alt = saeubereDaten({ rubriken: [{ id: "r", name: "Musik" }], doings: [{ id: "x", rubrikId: "r", text: "A" }], notizen: [] });
+  pruefe("Fassung 1 wird ein Projekt", alt && alt.projekte.length === 1 && alt.projekte[0].doings.length === 1);
+  pruefe("Fassung 1: Rubrik bleibt erhalten", alt && alt.projekte[0].rubriken[0].name === "Musik");
+
+  // Kaputter Stand
+  var kaputt = attrappe({ "doings-daten-v1": "{kaputt" });
+  var neu = ladeDaten(kaputt);
+  pruefe("Kaputter Stand: Start statt Absturz", neu.projekte.length === 1);
+  pruefe("Kaputter Stand bleibt als Sicherung erhalten", kaputt.getItem("doings-daten-v1-defekt") === "{kaputt");
+
+  // Import
+  pruefe("Import: fremdes JSON wird abgelehnt", saeubereDaten({ foo: 1 }) === null);
+  pruefe("Import: null wird abgelehnt", saeubereDaten(null) === null);
+  var importiert = saeubereDaten({ projekte: [{
+    id: "p", name: "Umzug",
+    rubriken: [{ id: "r", name: "Kisten" }],
+    doings: [{ id: "x", rubrikId: "gibt-es-nicht", text: "A", faellig: "2026-13-45" }],
+    notizen: [{ id: "y", text: "B", link: "javascript:alert(1)", rubrikId: "r" }],
+    meilensteine: [{ id: "m", titel: "Schlüssel", datum: "2026-11-01" }]
+  }] });
+  pruefe("Import: unbekannte Rubrik wird zu Ohne Rubrik", importiert.projekte[0].doings[0].rubrikId === null);
+  pruefe("Import: ungültiges Datum wird geleert", importiert.projekte[0].doings[0].faellig === "");
+  pruefe("Import: gefährlicher Link wird geleert", importiert.projekte[0].notizen[0].link === "");
+  pruefe("Import: Meilenstein bleibt erhalten", importiert.projekte[0].meilensteine[0].datum === "2026-11-01");
+
+  // Zeitleiste im Datumsmodus: datierte Einträge aufsteigend, ohne Datum hinten
+  var pz = { zeitModus: "datum", rubriken: [], notizen: [], doings: [
+    { id: "a", text: "spät", faellig: "2026-12-01", erstellt: 1, ordnung: 1 },
+    { id: "b", text: "ohne", faellig: "", erstellt: 2, ordnung: 2 },
+    { id: "c", text: "früh", faellig: "2026-11-01", erstellt: 3, ordnung: 3 }
+  ], meilensteine: [{ id: "m", titel: "Mitte", datum: "2026-11-15", erstellt: 4, ordnung: 4 }] };
+  var lz = zeitleisteEintraege(pz).map(function (e) { return e.obj.id; });
+  pruefe("Datumsmodus: Reihenfolge nach Datum, ohne Datum zuletzt", lz.join(",") === "c,m,a,b");
+
+  // Generischer Modus: nur Reihenfolge, Datum egal
+  pz.zeitModus = "generisch";
+  var gz = zeitleisteEintraege(pz).map(function (e) { return e.obj.id; });
+  pruefe("Generisch: nur die Reihenfolge zählt", gz.join(",") === "a,b,c,m");
+
+  // Eintrag schieben
+  zeitSchiebe(pz, "c", -1);
+  var nachSchieben = zeitleisteEintraege(pz).map(function (e) { return e.obj.id; });
+  pruefe("Generisch: Eintrag nach oben schieben tauscht mit Nachbarn", nachSchieben.indexOf("c") === 1 && nachSchieben.indexOf("b") === 2);
+  pruefe("Schieben ganz oben ergibt keine Änderung", zeitSchiebe(pz, "a", -1) === false);
+
+  // Meilenstein ohne Datum im Datumsmodus wird hinten einsortiert
+  var lzNeu = zeitleisteEintraege({ zeitModus: "datum", doings: [], notizen: [], meilensteine: [{ id: "q", titel: "x", datum: "", erstellt: 1, ordnung: 1 }] });
+  pruefe("Meilenstein ohne Datum bleibt sichtbar", lzNeu.length === 1 && lzNeu[0].datum === "");
+
+  // Rubriken löschen
+  var r = { rubriken: [{ id: "r1", name: "Musik" }], doings: [{ id: "a", rubrikId: "r1", text: "x" }], notizen: [{ id: "b", rubrikId: "r1", text: "y" }] };
+  rubrikLoeschen(r, "r1");
+  pruefe("Rubrik löschen entfernt die Rubrik", r.rubriken.length === 0);
+  pruefe("Rubrik löschen lässt Doings und Notizen bestehen", r.doings.length === 1 && r.notizen.length === 1);
+  pruefe("Rubrik löschen setzt Zuordnung auf Ohne Rubrik", r.doings[0].rubrikId === null && r.notizen[0].rubrikId === null);
+
+  // Kennungen und Vorlagen
+  var ids = {};
+  for (var i = 0; i < 1000; i++) ids[neueId()] = true;
+  pruefe("Kennungen sind eindeutig", Object.keys(ids).length === 1000);
+  var vorlagenIds = PROMT_VORLAGEN.map(function (p) { return p.id; });
+  pruefe("Promt-Kennungen sind eindeutig", vorlagenIds.length === new Set(vorlagenIds).size);
+
+  var gut = ergebnisse.filter(function (e) { return e.ok; }).length;
+  document.getElementById("zusammenfassung").innerHTML = gut === ergebnisse.length
+    ? '<span class="ok">Alle ' + gut + " Prüfungen bestanden.</span>"
+    : '<span class="nein">' + (ergebnisse.length - gut) + " von " + ergebnisse.length + " Prüfungen fehlgeschlagen.</span>";
+  document.getElementById("liste").innerHTML = ergebnisse.map(function (e) {
+    return "<li class=\"" + (e.ok ? "ok" : "nein") + '">' + (e.ok ? "✔ " : "✘ ") + e.name + "</li>";
+  }).join("");
+</script>
+</body>
+</html>

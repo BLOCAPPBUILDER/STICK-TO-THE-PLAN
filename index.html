@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="de" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f5f5f2" id="theme-color">
+<title>Stick to the plan</title>
+<meta name="description" content="Stick to the plan: Projekte, Doings mit Datum, Zeitleiste, Promts zum Kopieren und ein Denkbrett für Notizen, Lieder und Links. Alles bleibt auf dem Gerät.">
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./icon.svg" type="image/svg+xml">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Stick to the plan">
+<!-- ?v= gehört zu FASSUNG in sw.js: bei jeder neuen Fassung beide ändern -->
+<link rel="stylesheet" href="./app.css?v=2026-10-27-1">
+</head>
+<body>
+<div class="glas-bg" aria-hidden="true"><i></i></div>
+
+<header class="kopf">
+  <div class="marke-zeile">
+    <div class="logo">
+      <svg viewBox="0 0 64 64" aria-hidden="true">
+        <path class="logo-form" d="M14 37 L26 49 L44 23" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle class="logo-form" cx="49" cy="15" r="8" fill="currentColor"/>
+        <circle class="logo-haken" cx="49" cy="15" r="2.8"/>
+      </svg>
+      <span>Stick to the plan</span>
+    </div>
+    <div class="kopf-knoepfe">
+      <button type="button" class="rund" id="btn-thema" data-aktion="thema"></button>
+      <button type="button" class="rund" data-aktion="sichern" aria-label="Sichern und laden" title="Sichern und laden"></button>
+    </div>
+  </div>
+  <div class="kopf-bereich">
+    <button type="button" class="rund zurueck" id="btn-zurueck" data-aktion="zurueck" aria-label="Zurück zu Notizen" hidden></button>
+    <div class="kopf-text">
+      <h1 id="kopf-titel">Notizen</h1>
+      <p id="kopf-unter">Gedanken, Lieder, Links – schnell festhalten</p>
+    </div>
+  </div>
+</header>
+
+<div class="projekte-zeile" id="projekte-leiste"></div>
+
+<main class="layout" id="app"></main>
+
+<nav class="tabs" aria-label="Bereiche">
+  <div class="pille">
+    <button type="button" class="reiter" data-aktion="ansicht" data-wert="notizen">Notizen</button>
+    <button type="button" class="reiter" data-aktion="ansicht" data-wert="doings">Doings</button>
+    <button type="button" class="reiter" data-aktion="ansicht" data-wert="zeit">Zeitleiste</button>
+  </div>
+</nav>
+
+<div class="sheet-root" id="sheet" hidden></div>
+
+<script src="./daten.js?v=2026-10-27-1"></script>
+<script src="./kern.js?v=2026-10-27-1"></script>
+<script src="./app.js?v=2026-10-27-1"></script>
+</body>
+</html>

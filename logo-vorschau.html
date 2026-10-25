@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Logo-Vorschau</title>
+<style>
+  body{ margin:0; font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif; background:#f5f5f2; color:#1c1c1e; }
+  .reihe{ display:grid; grid-template-columns:1fr 1fr; }
+  .feld{ padding:28px 16px; text-align:center; background:var(--logo-bg); color:var(--logo-fg); --logo-bg:#f5f5f2; --logo-fg:#1c1c1e; }
+  .dunkel{ --logo-bg:#121214; --logo-fg:#f2f2f2; }
+  .feld svg{ width:72px; height:72px; }
+  .feld small{ display:block; margin-top:10px; font-size:14px; }
+  .logo-form{ color:inherit; }
+  .logo-haken{ fill:var(--logo-bg); stroke:var(--logo-bg); }
+  h2{ font-size:16px; margin:20px 16px 0; }
+  .klein svg{ width:24px; height:24px; }
+</style>
+</head>
+<body>
+
+<h2>A „Festgesteckt“ (Empfehlung)</h2>
+<div class="reihe">
+  <div class="feld"><svg viewBox="0 0 64 64" role="img" aria-label="Stick to the plan"><path class="logo-form" d="M14 37 L26 49 L44 23" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><circle class="logo-form" cx="49" cy="15" r="8" fill="currentColor"/><circle class="logo-haken" cx="49" cy="15" r="2.8"/></svg><small>Hell</small></div>
+  <div class="feld dunkel"><svg viewBox="0 0 64 64" role="img" aria-label="Stick to the plan"><path class="logo-form" d="M14 37 L26 49 L44 23" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><circle class="logo-form" cx="49" cy="15" r="8" fill="currentColor"/><circle class="logo-haken" cx="49" cy="15" r="2.8"/></svg><small>Dunkel</small></div>
+</div>
+
+<h2>B „Zeitleiste“</h2>
+<div class="reihe">
+  <div class="feld"><svg viewBox="0 0 64 64" role="img" aria-label="Stick to the plan"><path class="logo-form" d="M18 12 V52" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/><circle class="logo-form" cx="18" cy="14" r="9" fill="currentColor"/><path class="logo-haken" d="M13.5 14 L17 17.5 L23 10.5" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path class="logo-form" d="M34 14 H54 M34 32 H50 M34 50 H44" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/><circle class="logo-form" cx="18" cy="32" r="5" fill="currentColor"/><circle class="logo-form" cx="18" cy="50" r="5" fill="currentColor"/></svg><small>Hell</small></div>
+  <div class="feld dunkel"><svg viewBox="0 0 64 64" role="img" aria-label="Stick to the plan"><path class="logo-form" d="M18 12 V52" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/><circle class="logo-form" cx="18" cy="14" r="9" fill="currentColor"/><path class="logo-haken" d="M13.5 14 L17 17.5 L23 10.5" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path class="logo-form" d="M34 14 H54 M34 32 H50 M34 50 H44" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/><circle class="logo-form" cx="18" cy="32" r="5" fill="currentColor"/><circle class="logo-form" cx="18" cy="50" r="5" fill="currentColor"/></svg><small>Dunkel</small></div>
+</div>
+
+<h2>C „Feld mit Haken“</h2>
+<div class="reihe">
+  <div class="feld"><svg viewBox="0 0 64 64" role="img" aria-label="Stick to the plan"><rect class="logo-form" x="6" y="6" width="52" height="52" rx="16" fill="currentColor"/><path class="logo-haken" d="M18 33 L28 43 L46 21" fill="none" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/></svg><small>Hell</small></div>
+  <div class="feld dunkel"><svg viewBox="0 0 64 64" role="img" aria-label="Stick to the plan"><rect class="logo-form" x="6" y="6" width="52" height="52" rx="16" fill="currentColor"/><path class="logo-haken" d="M18 33 L28 43 L46 21" fill="none" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/></svg><small>Dunkel</small></div>
+</div>
+
+<h2>Kleine Größe (24 px), Variante A und C</h2>
+<div class="reihe">
+  <div class="feld klein"><svg viewBox="0 0 64 64"><path class="logo-form" d="M14 37 L26 49 L44 23" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><circle class="logo-form" cx="49" cy="15" r="8" fill="currentColor"/><circle class="logo-haken" cx="49" cy="15" r="2.8"/></svg> <svg viewBox="0 0 64 64"><rect class="logo-form" x="6" y="6" width="52" height="52" rx="16" fill="currentColor"/><path class="logo-haken" d="M18 33 L28 43 L46 21" fill="none" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+  <div class="feld dunkel klein"><svg viewBox="0 0 64 64"><path class="logo-form" d="M14 37 L26 49 L44 23" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><circle class="logo-form" cx="49" cy="15" r="8" fill="currentColor"/><circle class="logo-haken" cx="49" cy="15" r="2.8"/></svg> <svg viewBox="0 0 64 64"><rect class="logo-form" x="6" y="6" width="52" height="52" rx="16" fill="currentColor"/><path class="logo-haken" d="M18 33 L28 43 L46 21" fill="none" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+</div>
+
+</body>
+</html>

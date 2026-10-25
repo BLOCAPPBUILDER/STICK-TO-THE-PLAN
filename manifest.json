@@ -1,0 +1,17 @@
+{
+  "id": "./",
+  "name": "Stick to the plan",
+  "short_name": "Stick to the plan",
+  "description": "Stick to the plan: Projekte, Doings, Zeitleiste, Promts und Denkbrett für Notizen, Lieder und Links. Alles bleibt auf dem Gerät.",
+  "lang": "de",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#121214",
+  "theme_color": "#121214",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
+

@@ -1,0 +1,446 @@
+/* Doings – Aussehen. Dunkel und Hell wie BLOC (Layout „New“): ruhige Flächen, Glas mit Blur,
+   kleine Ecke oben links, orange Akzent nur für Hauptaktionen. Farben kommen ausschließlich aus den Tokens unten. */
+
+:root{
+  color-scheme: light;
+  --bg:#f5f5f2;
+  --surface:rgba(255,255,255,.72);
+  --surface-2:rgba(20,20,24,.04);
+  --fest:#fbfbf9;
+  --border:rgba(20,20,24,.1);
+  --text:#1c1c1e;
+  --text-dim:#5c5c63;
+  --accent:#ff5a36;
+  --accent-ink:#c93a1a;
+  --accent-text:#ffffff;
+  --gefahr:#c8242b;
+  --erledigt:#8e8e93;
+  --radius:24px;
+  --ecke:8px;
+  --blur:blur(18px) saturate(140%);
+  --schatten:0 1px 2px rgba(0,0,0,.05), 0 10px 30px rgba(0,0,0,.07);
+  --glas-blob:.3;
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --bg:#121214;
+  --surface:rgba(34,34,38,.6);
+  --surface-2:rgba(255,255,255,.05);
+  --fest:#1c1c20;
+  --border:rgba(255,255,255,.1);
+  --text:#f2f2f2;
+  --text-dim:#a2a2a8;
+  --accent:#ff6b47;
+  --accent-ink:#ff8a6b;
+  --accent-text:#1a1005;
+  --gefahr:#ff5c60;
+  --erledigt:#7c7c84;
+  --schatten:0 1px 2px rgba(0,0,0,.3), 0 12px 32px rgba(0,0,0,.35);
+  --glas-blob:.2;
+}
+
+*{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+[hidden]{ display:none !important; }
+html, body{ min-height:100%; }
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  overscroll-behavior-y:none;
+  padding-top:env(safe-area-inset-top);
+}
+button, input, select, textarea{ font:inherit; color:inherit; }
+button{ cursor:pointer; }
+:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+h1, h2, h3{ margin:0; letter-spacing:-.01em; }
+svg{ width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; flex:none; }
+
+/* ---------- Hintergrund: weiche Farbflächen hinter dem Glas ---------- */
+/* Dunkel: das Standardfoto aus BLOC. Hell: Pexels-Foto 10955817 (Pexels-Lizenz). Beide geblurrt und abgedunkelt wie in BLOC. */
+.glas-bg{ position:fixed; inset:0; z-index:-1; overflow:hidden; pointer-events:none; background:var(--bg); }
+.glas-bg i{
+  position:absolute; inset:-40px;
+  background:url("img/dunkel-hintergrund.jpg") center/cover no-repeat;
+  filter:blur(11px) brightness(.52) saturate(1.25);
+}
+.glas-bg::after{ content:""; position:absolute; inset:0; background:rgba(8,10,14,.2); }
+:root[data-theme="light"] .glas-bg i{
+  background-image:url("img/hell-hintergrund.jpg");
+  filter:blur(26px) brightness(.66) saturate(1.25);
+}
+:root[data-theme="light"] .glas-bg::after{
+  background:linear-gradient(180deg, rgba(245,245,242,.44), rgba(245,245,242,.2) 45%, rgba(245,245,242,.6));
+}
+
+/* ---------- Kopf ---------- */
+.kopf{
+  max-width:1200px; margin:0 auto;
+  padding:22px 16px 10px;
+  display:flex; align-items:flex-end; justify-content:space-between; gap:12px;
+}
+.kopf h1{ font-size:34px; font-weight:800; }
+.kopf p{ margin:2px 0 0; color:var(--text-dim); font-size:14px; }
+.kopf-knoepfe{ display:flex; gap:8px; }
+.rund{
+  width:48px; height:48px; padding:0; border-radius:50%;
+  display:grid; place-items:center;
+  border:1px solid var(--border); background:var(--surface); color:var(--text);
+  box-shadow:var(--schatten);
+  -webkit-backdrop-filter:var(--blur); backdrop-filter:var(--blur);
+}
+.rund:active{ transform:scale(.94); }
+
+/* ---------- Projekte: Leiste oben, Chips wie Pillen ---------- */
+.projekte-zeile{ max-width:1200px; margin:0 auto; padding:0 16px; }
+.projekte{ display:flex; gap:8px; overflow-x:auto; padding:6px 0 14px; scrollbar-width:none; }
+.projekte::-webkit-scrollbar{ display:none; }
+.projekt-chip{
+  flex:none; display:inline-flex; align-items:center; justify-content:center;
+  min-height:40px; padding:8px 16px; border-radius:999px;
+  border:1px solid var(--border); background:var(--surface); color:var(--text-dim);
+  font-size:14px; font-weight:600; white-space:nowrap;
+  -webkit-backdrop-filter:var(--blur); backdrop-filter:var(--blur);
+}
+.projekt-chip svg{ width:16px; height:16px; }
+.projekt-chip[aria-pressed="true"]{
+  color:var(--accent-text); background:var(--accent); border-color:transparent;
+}
+.projekt-chip.plus{ width:40px; padding:0; color:var(--text); }
+
+/* ---------- Zeitleiste als Fläche, die von rechts hereinwischt ---------- */
+.zeit-panel{
+  position:fixed; inset:0; z-index:45; overflow:auto;
+  padding:calc(env(safe-area-inset-top) + 18px) 16px 40px;
+  background:color-mix(in srgb, var(--bg) 86%, transparent);
+  -webkit-backdrop-filter:var(--blur); backdrop-filter:var(--blur);
+  transform:translateX(100%); visibility:hidden;
+  transition:transform .32s cubic-bezier(.2,.8,.2,1), visibility .32s;
+}
+.zeit-panel.offen{ transform:none; visibility:visible; }
+.zeit-panel > *{ max-width:640px; margin-left:auto; margin-right:auto; }
+.zeit-kopf{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.zeit-kopf h2{ font-size:28px; font-weight:800; }
+.zeit-modus{ display:flex; gap:8px; margin-bottom:8px; }
+.zeit-strahl{ position:relative; min-height:60vh; padding:8px 0 40px; touch-action:pan-y; }
+.zeit-strahl .leer{ padding-left:20px; }
+.ze-pfeile{ display:flex; gap:2px; }
+.meilenstein-ze .ze-knopf{ border-color:color-mix(in srgb, var(--accent) 45%, transparent); }
+.meilenstein-ze .ze-art{ color:var(--accent-ink); }
+.tag.ohne .punkt{ border-style:dashed; }
+
+/* ---------- Zeitleiste: schmale Linie, kleine Punkte je Tag ---------- */
+.zeit{ list-style:none; margin:0; padding:0 0 0 4px; border-left:1px solid var(--border); }
+.tag{ position:relative; padding:0 0 18px 20px; }
+.tag:last-child{ padding-bottom:4px; }
+.tag-kopf{ display:flex; align-items:center; gap:8px; margin-bottom:8px; font-size:14px; font-weight:700; }
+.tag-kopf .punkt{
+  position:absolute; left:-5px; top:3px; width:9px; height:9px; border-radius:50%;
+  background:var(--surface); border:2px solid var(--text-dim);
+}
+.tag.heute .punkt{ background:var(--accent); border-color:var(--accent); }
+.tag.vergangen{ opacity:.6; }
+.tag-liste{ list-style:none; margin:0; padding:0; display:grid; gap:6px; }
+.ze-knopf{
+  width:100%; display:flex; align-items:baseline; gap:10px; text-align:left;
+  padding:8px 12px; border-radius:14px; border:1px solid var(--border); background:var(--surface-2); color:var(--text);
+}
+.ze-art{ flex:none; font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--text-dim); min-width:44px; }
+.ze.fertig .ze-knopf > span:last-child{ text-decoration:line-through; color:var(--erledigt); }
+.notiz-ze .ze-knopf{ border-style:dashed; }
+
+/* ---------- Aufbau: Doings links, Notizen rechts (ab 960 px) ---------- */
+.layout{
+  max-width:1200px; margin:0 auto;
+  padding:6px 16px 130px;
+  display:grid; gap:16px; grid-template-columns:minmax(0,1fr);
+}
+@media (min-width:960px){
+  .layout{ grid-template-columns:minmax(0,1fr) 380px; align-items:start; padding-bottom:48px; }
+  .notiz-spalte{ display:block; position:sticky; top:16px; max-height:calc(100vh - 32px); overflow:auto; }
+  .nur-schmal{ display:none; }
+}
+
+/* ---------- Karten (Glas) ---------- */
+.karte{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  border-top-left-radius:var(--ecke);
+  box-shadow:var(--schatten);
+  -webkit-backdrop-filter:var(--blur); backdrop-filter:var(--blur);
+}
+.abschnitt-kopf{
+  width:100%; display:flex; align-items:center; gap:12px;
+  padding:20px 20px 16px; border:0; background:none; text-align:left;
+}
+.abschnitt-kopf h2{ font-size:24px; font-weight:800; }
+.kopf-text{ flex:1; min-width:0; }
+.kopf-text small, .notiz-kopf small{ display:block; margin-top:2px; color:var(--text-dim); font-size:13px; }
+.chev{ width:20px; height:20px; color:var(--text-dim); transition:transform .2s ease; }
+[aria-expanded="false"] > .chev{ transform:rotate(-90deg); }
+.abschnitt-body{ padding:0 18px 18px; }
+
+/* ---------- Formulare und Knöpfe ---------- */
+input, select, textarea{
+  width:100%; min-width:0;
+  padding:12px 14px; border-radius:16px;
+  border:1px solid var(--border); background:var(--surface-2);
+}
+textarea{ resize:vertical; min-height:74px; line-height:1.45; }
+label{ display:grid; gap:6px; font-size:13px; color:var(--text-dim); }
+.schnell{ display:grid; gap:8px; margin-bottom:12px; }
+@media (min-width:600px){ .schnell{ grid-template-columns:minmax(0,1fr) 180px auto; } }
+.knopf{
+  border:0; border-radius:999px; padding:12px 20px;
+  background:var(--accent); color:var(--accent-text); font-weight:700; white-space:nowrap;
+}
+.knopf:active{ transform:scale(.97); }
+.knopf-zweit{ background:var(--surface-2); color:var(--text); border:1px solid var(--border); }
+.klein{ border:0; background:none; padding:6px 8px; border-radius:10px; color:var(--text-dim); font-size:13px; }
+.klein:hover{ color:var(--text); }
+.gefahr{ color:var(--gefahr); }
+.werkzeug, .chips{ display:flex; flex-wrap:wrap; gap:8px; margin:0 0 12px; }
+.chip{
+  padding:7px 13px; border-radius:999px; font-size:13px;
+  border:1px solid var(--border); background:var(--surface-2); color:var(--text-dim);
+}
+.chip[aria-pressed="true"]{
+  color:var(--text);
+  background:color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color:color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.marke{
+  font-style:normal; font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--accent-ink); padding:2px 8px; border-radius:999px;
+  border:1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.leer, .hinweis{ margin:6px 2px; color:var(--text-dim); font-size:14px; line-height:1.5; }
+.fehler{ margin:0; color:var(--gefahr); font-size:13px; }
+.spacer{ flex:1; }
+
+/* ---------- Doings nach Rubriken ---------- */
+.rubrik{ margin-top:14px; }
+.rubrik-kopf{ display:flex; align-items:center; gap:6px; }
+.rubrik-auf{
+  flex:1; min-width:0; display:flex; align-items:center; gap:10px;
+  padding:6px 2px; border:0; background:none; text-align:left;
+  font-size:15px; font-weight:700; color:var(--text);
+}
+.rubrik-auf .chev{ width:16px; height:16px; }
+.zaehl{ margin-left:auto; font-size:13px; font-weight:500; color:var(--text-dim); }
+.doings{ list-style:none; margin:0; padding:0; display:grid; gap:8px; }
+.doing{
+  display:flex; align-items:flex-start; gap:12px;
+  padding:12px 14px; border-radius:18px;
+  border:1px solid var(--border); background:var(--surface-2);
+}
+.haken{
+  flex:none; width:26px; height:26px; padding:0; border-radius:50%;
+  display:grid; place-items:center;
+  border:2px solid var(--text-dim); background:none;
+}
+.haken svg{ width:14px; height:14px; stroke-width:3; }
+.haken[aria-pressed="true"]{ background:var(--accent); border-color:var(--accent); color:var(--accent-text); }
+.doing-text{
+  flex:1; min-width:0; display:grid; gap:3px; justify-items:start;
+  padding:0; border:0; background:none; text-align:left; color:var(--text); overflow-wrap:anywhere;
+}
+.doing-text small{ color:var(--text-dim); font-size:13px; white-space:pre-wrap; }
+.fertig .doing-text > span{ color:var(--erledigt); text-decoration:line-through; }
+
+/* ---------- Notizen (Denkbrett) ---------- */
+@media (max-width:959px){ .notiz-spalte{ display:none; } }
+.notiz-kopf{ padding:20px 20px 0; }
+.notiz-kopf h2{ font-size:24px; font-weight:800; }
+.notiz-inhalt{ padding:16px 20px 20px; }
+.notiz-form{ display:grid; gap:8px; margin-bottom:14px; }
+.notiz-form .zeile{ display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; }
+.notiz-liste{ list-style:none; margin:0; padding:0; display:grid; gap:10px; }
+.notiz-karte{
+  padding:14px; border-radius:18px;
+  border:1px solid var(--border); background:var(--surface-2);
+}
+.notiz-karte p{ margin:0 0 10px; white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.45; }
+.notiz-fuss{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.linkmarke{
+  padding:5px 11px; border-radius:999px; font-size:13px; font-weight:700; text-decoration:none;
+  color:var(--text); background:var(--surface); border:1px solid var(--border);
+}
+.linkmarke.spotify{ border-color:rgba(30,215,96,.7); }
+.linkmarke.youtube{ border-color:rgba(255,64,64,.7); }
+
+/* ---------- Untere Leiste: Pille wie in BLOC ---------- */
+.leiste{
+  position:fixed; z-index:20; left:50%; transform:translateX(-50%);
+  bottom:calc(14px + env(safe-area-inset-bottom));
+  width:calc(100% - 28px); max-width:420px;
+}
+.pille{
+  display:flex; gap:4px; padding:6px; border-radius:999px;
+  border:1px solid var(--border); background:var(--surface); box-shadow:var(--schatten);
+  -webkit-backdrop-filter:var(--blur); backdrop-filter:var(--blur);
+}
+.reiter{
+  flex:1; padding:12px 8px; border:0; border-radius:999px;
+  background:none; color:var(--text-dim); font-weight:600;
+}
+.reiter:hover{ color:var(--text); }
+.reiter.aktiv{ color:var(--accent-ink); background:color-mix(in srgb, var(--accent) 11%, transparent); }
+
+/* ---------- Fenster (Sheets) ---------- */
+.sheet-root{ position:fixed; inset:0; z-index:50; }
+.sheet-hinter{
+  position:absolute; inset:0; background:rgba(0,0,0,.4);
+  -webkit-backdrop-filter:blur(4px); backdrop-filter:blur(4px);
+}
+.sheet{
+  position:absolute; left:0; right:0; bottom:0;
+  max-height:90vh; overflow:auto;
+  padding:18px 18px calc(18px + env(safe-area-inset-bottom));
+  background:var(--fest); border:1px solid var(--border); border-bottom:0;
+  border-radius:28px 28px 0 0; border-top-left-radius:var(--ecke);
+  box-shadow:var(--schatten);
+}
+@media (min-width:700px){
+  .sheet{
+    left:50%; right:auto; top:50%; bottom:auto; transform:translate(-50%,-50%);
+    width:min(640px, calc(100% - 32px)); max-height:88vh;
+    border-bottom:1px solid var(--border); border-radius:28px; border-top-left-radius:var(--ecke);
+  }
+}
+.sheet-kopf{ display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+.sheet-kopf h2{ flex:1; font-size:22px; font-weight:800; }
+.sheet-body{ display:grid; gap:14px; }
+.formular{ display:grid; gap:12px; }
+.formular-knoepfe{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.promt{ padding:14px 0; border-top:1px solid var(--border); }
+.promt h3{ font-size:16px; margin-bottom:4px; }
+.promt p{ margin:0 0 10px; color:var(--text-dim); font-size:14px; line-height:1.5; white-space:pre-wrap; }
+.promt-knoepfe{ display:flex; flex-wrap:wrap; gap:8px; }
+.versteckt{ position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+
+/* ---------- Ansichten-Leiste unten, Schnell-Eingaben, Zeitleiste von links nach rechts ---------- */
+.layout{ grid-template-columns:minmax(0,1fr) !important; max-width:640px; }
+.tabs{
+  position:fixed; z-index:20; left:50%; transform:translateX(-50%);
+  bottom:calc(14px + env(safe-area-inset-bottom));
+  width:calc(100% - 28px); max-width:460px;
+}
+.tabs .pille{ padding:6px; }
+.tabs .reiter{ display:flex; align-items:center; justify-content:center; min-height:52px; font-size:14px; }
+.tabs .reiter.aktiv{ color:var(--accent-ink); background:color-mix(in srgb, var(--accent) 14%, transparent); }
+.schnell-zeile{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,auto) auto; gap:8px; align-items:center; }
+.schnell-zeile input[type="date"], .schnell-zeile select{ width:auto; min-width:0; padding:10px 10px; }
+.zeit-schnell{ display:grid; gap:8px; margin:12px 0; }
+.zeit-schnell .schnell-zeile{ grid-template-columns:minmax(0,auto) auto auto; }
+.zeit-karte{ padding:16px 18px 18px; }
+.zeit-modus{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+.notiz-karte-gross{ padding:16px; margin-bottom:14px; }
+.notiz-karte-gross .notiz-form{ margin:0; }
+.faellig{ color:var(--accent-ink) !important; }
+
+/* Zeitleiste horizontal: Strahl läuft von links nach rechts, Tage sind Spalten */
+.zeit-strahl{ min-height:0; padding:8px 0 16px; overflow-x:auto; overflow-y:hidden; touch-action:pan-x pan-y; -webkit-overflow-scrolling:touch; }
+.zeit-strahl .leer{ padding:0 4px; }
+.zeit{
+  display:flex; align-items:flex-start; gap:0;
+  margin:0; padding:34px 18px 4px 4px;
+  border-left:0; border-top:1px solid var(--border);
+  min-width:max-content;
+}
+.tag{ position:relative; flex:none; width:188px; padding:0 14px 0 0; }
+.tag:last-child{ padding-bottom:0; }
+.tag .punkt{ position:absolute; left:-6px; top:-6px; }
+.tag-kopf{ position:absolute; top:-34px; left:0; right:0; flex-direction:row; flex-wrap:nowrap; margin:0; white-space:nowrap; }
+.tag-kopf time{ font-size:13px; }
+.tag-kopf .marke{ margin-left:4px; }
+.tag-liste{ margin-top:12px; }
+.ze-knopf{ min-height:44px; }
+
+/* Beschriftung der Zeitleiste sitzt über dem Strahl */
+.zeit-strahl{ padding-top:40px; }
+.zeit{ padding-top:0; }
+.tag-kopf{ top:-30px; }
+
+/* Promt-Auswahl im Doing-Formular */
+.promt-auswahl{ display:flex; flex-wrap:wrap; gap:8px; }
+
+/* Zeitleiste im Pin-Stil: Punkt als Pin auf dem Strahl, gestrichelte Verbindung zur Karte, Datum darüber */
+.zeit{ border-top:2px solid color-mix(in srgb, var(--text) 18%, transparent); }
+.zeit .tag{ padding-right:18px; }
+.zeit .tag-kopf{ top:-40px; font-size:13px; color:var(--text-dim); }
+.zeit .tag.heute .tag-kopf{ color:var(--text); }
+.zeit .tag .punkt{
+  top:31px; left:-9px; width:18px; height:18px; border-radius:50%;
+  background:var(--fest); border:3px solid var(--text-dim);
+  box-shadow:0 0 0 5px color-mix(in srgb, var(--bg) 70%, transparent);
+}
+.zeit .tag.heute .punkt{
+  top:29px; left:-11px; width:22px; height:22px; background:var(--accent); border-color:var(--accent);
+  box-shadow:0 0 0 6px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+.zeit .tag.ohne .punkt{ border-style:dashed; background:none; }
+.zeit .tag-liste{ position:relative; margin-top:22px; }
+.zeit .tag-liste::before{
+  content:""; position:absolute; left:0; top:-22px; height:22px;
+  border-left:1px dashed color-mix(in srgb, var(--text) 30%, transparent);
+}
+.zeit .ze-knopf{ border-radius:16px; background:var(--surface); box-shadow:var(--schatten); }
+.zeit .ze{ margin-left:0; }
+
+/* Zeitleiste im Stil „Kreise auf dünner Linie“: Knoten auf der Mitte, Text abwechselnd oben und unten an dünnen Linien */
+.zeit-strahl{ padding:0 0 8px; }
+.zeit{ position:relative; height:460px; padding:0 24px; border-top:0; align-items:stretch; }
+.zeit::before{
+  content:""; position:absolute; left:0; right:0; top:50%; height:1px;
+  background:color-mix(in srgb, var(--text) 40%, transparent);
+}
+.zeit .tag{ position:relative; width:230px; height:100%; padding:0 18px 0 0; }
+.zeit .tag .punkt{
+  position:absolute; top:50%; left:0; width:30px; height:30px; margin:-15px 0 0 -15px;
+  border-radius:50%; background:var(--fest);
+  border:1.5px solid color-mix(in srgb, var(--text) 55%, transparent);
+  box-shadow:0 6px 18px rgba(0,0,0,.12);
+}
+.zeit .tag .punkt::after{
+  content:""; position:absolute; inset:9px; border-radius:50%; background:var(--text-dim);
+}
+.zeit .tag.heute .punkt{ top:50%; left:0; width:34px; height:34px; margin:-17px 0 0 -17px; background:var(--accent); border-color:var(--accent); }
+.zeit .tag.heute .punkt::after{ background:var(--accent-text); }
+.zeit .tag.ohne .punkt{ border-style:dashed; }
+.zeit .tag::after{
+  content:""; position:absolute; left:0; width:1px;
+  background:color-mix(in srgb, var(--text) 40%, transparent);
+}
+.zeit .tag.oben::after{ top:calc(50% - 120px); bottom:50%; }
+.zeit .tag.unten::after{ top:50%; bottom:calc(50% - 100px); }
+
+.zeit .tag.oben .tag-kopf{ top:calc(50% - 124px); bottom:auto; left:14px; right:0; font-size:20px; font-weight:700; }
+.zeit .tag.unten .tag-kopf{ top:calc(50% + 100px); bottom:auto; left:14px; right:0; font-size:20px; font-weight:700; }
+.zeit .tag.oben .tag-kopf time, .zeit .tag.unten .tag-kopf time{ font-size:20px; font-weight:700; }
+.zeit .tag.oben .tag-liste, .zeit .tag.unten .tag-liste{ position:absolute; left:14px; right:0; margin:0; max-height:calc(50% - 170px); overflow-y:auto; }
+.zeit .tag.oben .tag-liste{ top:calc(50% - 90px); }
+.zeit .tag.unten .tag-liste{ top:calc(50% + 136px); }
+.zeit .tag .tag-liste::before{ display:none; }
+.zeit .tag.heute .tag-kopf time{ color:var(--accent-ink); }
+.zeit .ze-knopf{ background:none; box-shadow:none; border:0; padding:6px 0; border-radius:0; }
+.zeit .ze-art{ display:block; font-size:12px; }
+
+/* Mehr Platz für die Karten, weniger Scrollen */
+.zeit .tag.oben .tag-liste, .zeit .tag.unten .tag-liste{ max-height:calc(50% - 100px); }
+
+/* Kopf: Logo oben links, darunter die Überschrift des Bereichs */
+.kopf{ display:block; max-width:640px; padding:calc(env(safe-area-inset-top) + 14px) 16px 6px; }
+.marke-zeile{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; }
+.logo{ display:flex; align-items:center; gap:10px; font-size:16px; font-weight:800; letter-spacing:-.01em; }
+.logo svg{ width:36px; height:36px; flex:none; }
+.kopf-bereich{ display:flex; align-items:center; gap:10px; }
+.kopf-bereich .kopf-text{ min-width:0; }
+.kopf-bereich h1{ font-size:32px; font-weight:800; }
+.kopf-bereich .zurueck{ width:44px; height:44px; }
+
+/* Logo einfarbig: voller Kreis in Textfarbe, Haken als Aussparung in Hintergrundfarbe (folgt Hell und Dunkel) */
+.logo{ color:var(--text); }
+.logo-haken{ fill:var(--bg); stroke:var(--bg); }
