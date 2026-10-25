@@ -3,11 +3,11 @@
  * Bei jeder neuen Fassung FASSUNG hier und ?v= in index.html ändern.
  */
 
-var FASSUNG = "2026-10-25-3";
+var FASSUNG = "2026-10-25-4";
 var SPEICHER = "stick-to-the-plan-" + FASSUNG;
 var GRUNDGERUEST = [
   "./", "./index.html", "./app.css", "./daten.js", "./kern.js", "./app.js",
-  "./manifest.json", "./icon.svg", "./privacy.html"
+  "./manifest.json", "./icon.svg", "./icon-192.png", "./icon-512.png", "./privacy.html"
 ];
 
 self.addEventListener("install", function (e) {

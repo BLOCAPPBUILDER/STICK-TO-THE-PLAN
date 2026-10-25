@@ -21,7 +21,8 @@ var ICON = {
   hell: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
   dunkel: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>',
   system: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg>',
-  sichern: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>'
+  sichern: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
+  installieren: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M12 7v7M9.5 11.5L12 14l2.5-2.5"/></svg>'
 };
 var THEMA_NAMEN = { system: "System", hell: "Hell", dunkel: "Dunkel" };
 var NAECHSTES_THEMA = { system: "hell", hell: "dunkel", dunkel: "system" };
@@ -710,6 +711,9 @@ document.addEventListener("click", function (e) {
     case "exportieren":
       exportiere();
       break;
+    case "installieren":
+      installiere();
+      break;
     case "link-kopieren":
       kopiere(appAdresse(), el);
       break;
@@ -891,6 +895,49 @@ if (dunkelAbfrage && dunkelAbfrage.addEventListener) {
   });
 }
 
+/* ---------- Als App installieren ----------
+ * Android/Chrome: der Browser meldet „beforeinstallprompt“, dann öffnet der Knopf den echten Installationsdialog.
+ * iPhone/iPad: Safari hat keinen solchen Dialog, der Knopf erklärt den Weg über „Teilen › Zum Home-Bildschirm“.
+ * Läuft die App schon installiert (eigenes Fenster), bleibt der Knopf verborgen. */
+var installAngebot = null;
+
+function laeuftAlsApp() {
+  return (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true;
+}
+function istIos() {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+function zeigeInstallKnopf() {
+  var k = document.getElementById("btn-installieren");
+  if (k) k.hidden = laeuftAlsApp() || !(installAngebot || istIos());
+}
+function installiere() {
+  if (installAngebot) {
+    installAngebot.prompt();
+    installAngebot.userChoice.then(function () { installAngebot = null; zeigeInstallKnopf(); }, function () {});
+    return;
+  }
+  oeffneSheet("Als App installieren",
+    '<p class="hinweis">So kommt „Stick to the plan“ als App auf deinen Startbildschirm:</p>' +
+    '<ol class="install-schritte">' +
+    (istIos()
+      ? '<li>Die Seite in <b>Safari</b> öffnen.</li><li>Unten auf <b>Teilen</b> tippen (Quadrat mit Pfeil nach oben).</li><li><b>Zum Home-Bildschirm</b> wählen und mit <b>Hinzufügen</b> bestätigen.</li>'
+      : '<li>Das Browser-Menü öffnen (⋮ oben rechts).</li><li><b>App installieren</b> oder <b>Zum Startbildschirm hinzufügen</b> wählen.</li>') +
+    '</ol><p class="hinweis">Danach startet die App ohne Adressleiste und funktioniert auch offline. Deine Daten bleiben auf dem Gerät.</p>',
+    "info");
+}
+window.addEventListener("beforeinstallprompt", function (e) {
+  e.preventDefault();
+  installAngebot = e;
+  zeigeInstallKnopf();
+});
+window.addEventListener("appinstalled", function () {
+  installAngebot = null;
+  zeigeInstallKnopf();
+});
+
+document.getElementById("btn-installieren").innerHTML = ICON.installieren;
+zeigeInstallKnopf();
 document.querySelector('[data-aktion="sichern"]').innerHTML = ICON.sichern;
 document.getElementById("btn-zurueck").innerHTML = ICON.zurueck;
 wendeThemaAn();

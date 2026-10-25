@@ -8,10 +8,11 @@
 <meta name="description" content="Stick to the plan: Projekte, Doings mit Datum, Zeitleiste, Promts zum Kopieren und ein Denkbrett für Notizen, Lieder und Links. Alles bleibt auf dem Gerät.">
 <link rel="manifest" href="./manifest.json">
 <link rel="icon" href="./icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="./icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Stick to the plan">
 <!-- ?v= gehört zu FASSUNG in sw.js: bei jeder neuen Fassung beide ändern -->
-<link rel="stylesheet" href="./app.css?v=2026-10-25-3">
+<link rel="stylesheet" href="./app.css?v=2026-10-25-4">
 </head>
 <body>
 <div class="glas-bg" aria-hidden="true"><i></i></div>
@@ -27,6 +28,7 @@
       <span>Stick to the plan</span>
     </div>
     <div class="kopf-knoepfe">
+      <button type="button" class="rund" id="btn-installieren" data-aktion="installieren" aria-label="Als App installieren" title="Als App installieren" hidden></button>
       <button type="button" class="rund" id="btn-thema" data-aktion="thema"></button>
       <button type="button" class="rund" data-aktion="sichern" aria-label="Sichern und teilen" title="Sichern und teilen"></button>
     </div>
@@ -54,8 +56,8 @@
 
 <div class="sheet-root" id="sheet" hidden></div>
 
-<script src="./daten.js?v=2026-10-25-3"></script>
-<script src="./kern.js?v=2026-10-25-3"></script>
-<script src="./app.js?v=2026-10-25-3"></script>
+<script src="./daten.js?v=2026-10-25-4"></script>
+<script src="./kern.js?v=2026-10-25-4"></script>
+<script src="./app.js?v=2026-10-25-4"></script>
 </body>
 </html>
