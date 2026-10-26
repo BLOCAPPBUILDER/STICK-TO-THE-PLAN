@@ -960,6 +960,9 @@ document.addEventListener("touchend", function (e) {
 /* Langdruck: auf den Strahl der Zeitleiste (Zieldatum), auf Doings und Notizen (Menü), auf Projekte (löschen).
    Eingaben, Häkchen, Klappknöpfe und Anhänge reagieren nicht darauf. */
 document.addEventListener("pointerdown", function (e) {
+  /* Jedes neue Drücken beginnt ohne Langdruck-Sperre. Sonst bliebe sie hängen, wenn das Loslassen
+     auf einem inzwischen entfernten Element landet (z. B. nach dem Löschen eines Projekts). */
+  langdruckAusgeloest = false;
   var t = e.target;
   if (t.closest("input, textarea, select, .haken, .falt, .anhang")) return;
   var ausfuehren = null;

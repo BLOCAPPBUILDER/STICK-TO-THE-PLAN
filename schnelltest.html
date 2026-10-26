@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stick to the plan – Schnelltest</title>
+<style>
+  :root { --bg:#f5f5f2; --text:#1c1c1e; --dim:#5c5c63; --ok:#1f9d63; --fail:#d6453d; --rule:#e2e2dd; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#121214; --text:#f2f2f2; --dim:#a2a2a8; --rule:#2e2e33; } }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { display:flex; gap:20px; padding:16px; flex-wrap:wrap; }
+  .links { flex:1 1 320px; min-width:0; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  p { color:var(--dim); margin:0 0 12px; }
+  button { font:inherit; padding:10px 16px; border-radius:10px; border:0; background:#ff5a36; color:#fff; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.5; }
+  #summe { font-weight:700; margin:12px 0; }
+  #summe.ok { color:var(--ok); } #summe.fail { color:var(--fail); }
+  ol { padding-left:22px; margin:0; }
+  li { margin:4px 0; }
+  li.ok::marker { color:var(--ok); } li.fail { color:var(--fail); }
+  li small { display:block; color:var(--dim); }
+  iframe { width:390px; height:780px; border:1px solid var(--rule); border-radius:14px; background:#fff; flex:0 0 auto; max-width:100%; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="links">
+    <h1>Stick to the plan – Schnelltest</h1>
+    <p>Klickt sich einmal durch die wichtigsten Wege der App. Läuft nur über localhost (nicht als Datei öffnen). Dein gespeicherter Stand wird vorher beiseitegelegt und danach wiederhergestellt.</p>
+    <button id="los" type="button">Test starten</button>
+    <div id="summe"></div>
+    <ol id="liste"></ol>
+  </div>
+  <iframe id="app" title="App im Test"></iframe>
+</div>
+<script>
+(function () {
+  "use strict";
+  var SCHLUESSEL = ["doings-daten-v1", "doings-ui-v1"];
+  var iframe = document.getElementById("app"), liste = document.getElementById("liste"), summe = document.getElementById("summe");
+  var W = null, D = null, fehler = [];
+  var lokal = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+
+  function warte(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  async function bis(fn, ms, was) {
+    var t0 = Date.now();
+    while (Date.now() - t0 < (ms || 4000)) {
+      try { var v = fn(); if (v) return v; } catch (e) {}
+      await warte(50);
+    }
+    throw new Error("Zeitüberschreitung: " + (was || "Bedingung"));
+  }
+  function $(s) { return D.querySelector(s); }
+  function $$(s) { return Array.prototype.slice.call(D.querySelectorAll(s)); }
+  function klick(s) { var el = typeof s === "string" ? $(s) : s; if (!el) throw new Error("nicht gefunden: " + s); el.click(); return el; }
+  function pruefe(b, text) { if (!b) throw new Error(text); }
+  function eingeben(el, wert) { el.value = wert; el.dispatchEvent(new W.Event("input", { bubbles: true })); }
+  function nachRechts(el) { return el.getBoundingClientRect(); }
+  /* Langdruck: Zeiger drücken, 650 ms halten, loslassen */
+  async function langdruck(el) {
+    el.dispatchEvent(new W.PointerEvent("pointerdown", { bubbles: true, cancelable: true, pointerType: "touch" }));
+    await warte(650);
+    /* Loslassen am Dokument, wie beim echten Finger; ein entferntes Element bekäme es nicht mehr */
+    D.dispatchEvent(new W.PointerEvent("pointerup", { bubbles: true, pointerType: "touch" }));
+    await warte(400);
+  }
+  function sheetOffen(titel) {
+    var s = $("#sheet");
+    return s && !s.hidden && (!titel || (s.querySelector("h2") && s.querySelector("h2").textContent === titel));
+  }
+  function schliessen() { var z = $(".sheet-hinter"); if (z) klick(z); }
+  async function ansicht(name) {
+    klick('[data-aktion="ansicht"][data-wert="' + name + '"]');
+    await bis(function () { return $('[data-aktion="ansicht"][data-wert="' + name + '"][aria-current="page"]'); }, 2000, "Ansicht " + name);
+  }
+  async function neueNotiz(text) {
+    await ansicht("notizen");
+    var f = await bis(function () { return $('[data-form="notiz-neu"]'); }, 2000, "Formular Neue Notiz");
+    eingeben(f.querySelector('[name="text"]'), text);
+    klick(f.querySelector('button[type="submit"]'));
+    await bis(function () { return $$(".notiz-karte p").some(function (p) { return p.textContent === text; }); }, 2000, "Notiz erscheint");
+  }
+  function notizMit(text) {
+    return $$(".notiz-karte").find(function (li) { return li.textContent.indexOf(text) !== -1; });
+  }
+
+  function laden() {
+    return new Promise(function (ok) {
+      iframe.onload = function () {
+        W = iframe.contentWindow; D = W.document;
+        W.addEventListener("error", function (e) { fehler.push(String(e.message || e)); });
+        W.confirm = function () { return true; };    // Bestätigungen im Test automatisch mit „Ja“ beantworten
+        setTimeout(ok, 400);
+      };
+      iframe.src = "index.html?schnelltest=" + Date.now();
+    });
+  }
+
+  var TESTS = [
+    ["Start: leerer Stand, Notizen ist die Startseite", async function () {
+      await laden();
+      await bis(function () { return $("#app"); }, 3000, "Oberfläche");
+      pruefe($('[data-aktion="ansicht"][data-wert="notizen"][aria-current="page"]'), "Notizen ist nicht die Startseite");
+    }],
+    ["Notiz anlegen erscheint in der Liste", async function () {
+      await neueNotiz("Schnelltest Notiz eins");
+    }],
+    ["Leere Notiz wird abgelehnt", async function () {
+      await ansicht("notizen");
+      var f = $('[data-form="notiz-neu"]');
+      klick(f.querySelector('button[type="submit"]'));
+      await bis(function () { return !f.querySelector("[data-fehler]").hidden; }, 2000, "Fehlermeldung");
+    }],
+    ["Lange Notiz bleibt in der Handybreite (kein Überlauf)", async function () {
+      await neueNotiz("Lang: " + "Wortwort ".repeat(60) + "https://example.com/" + "a".repeat(200));
+      var breite = D.documentElement.clientWidth;
+      var liste = $(".notiz-liste");
+      pruefe(nachRechts(liste).width <= breite + 1, "Liste breiter als der Bildschirm: " + nachRechts(liste).width + " > " + breite);
+      pruefe(D.documentElement.scrollWidth <= breite + 1, "Seite scrollt waagerecht");
+    }],
+    ["Notiz einklappen und wieder ausklappen", async function () {
+      var li = notizMit("Schnelltest Notiz eins");
+      pruefe(li, "Notiz nicht gefunden");
+      klick(li.querySelector(".falt"));
+      await bis(function () { return notizMit("Schnelltest Notiz eins").classList.contains("eingeklappt"); }, 2000, "eingeklappt");
+      klick(notizMit("Schnelltest Notiz eins").querySelector(".falt"));
+      await bis(function () { return !notizMit("Schnelltest Notiz eins").classList.contains("eingeklappt"); }, 2000, "ausgeklappt");
+    }],
+    ["Langdruck auf Notiz öffnet Bearbeiten, Teilen, Löschen", async function () {
+      var li = notizMit("Schnelltest Notiz eins");
+      await langdruck(li.querySelector(".notiz-karte, .karte-text") || li);
+      await bis(function () { return sheetOffen() && $(".aktion-liste"); }, 2000, "Menü");
+      var knoepfe = $$(".aktion-liste button").map(function (b) { return b.textContent.trim(); });
+      pruefe(knoepfe.indexOf("Bearbeiten") !== -1 && knoepfe.indexOf("Teilen") !== -1 && knoepfe.indexOf("Löschen") !== -1, "Menü: " + knoepfe.join(", "));
+      schliessen();
+    }],
+    ["Notiz über Langdruck löschen", async function () {
+      await neueNotiz("Schnelltest weg");
+      await langdruck(notizMit("Schnelltest weg"));
+      await bis(function () { return $(".aktion-liste"); }, 2000, "Menü");
+      klick('.aktion-liste [data-aktion="notiz-loeschen"]');
+      await bis(function () { return !notizMit("Schnelltest weg"); }, 2000, "Notiz gelöscht");
+    }],
+    ["Datei an Notiz anhängen", async function () {
+      await ansicht("notizen");
+      var eingabe = await bis(function () { return $('[data-datei="wartend"][data-kontext="notiz"]'); }, 2000, "Dateiwahl");
+      var dt = new W.DataTransfer();
+      dt.items.add(new W.File(["Schnelltest-Inhalt"], "schnelltest.txt", { type: "text/plain" }));
+      eingabe.files = dt.files;
+      eingabe.dispatchEvent(new W.Event("change", { bubbles: true }));
+      await bis(function () { return $$('[data-wartend-liste="notiz"] .anhang-chip').some(function (c) { return c.textContent.indexOf("schnelltest.txt") !== -1; }); }, 3000, "Datei im Formular");
+      var f = $('[data-form="notiz-neu"]');
+      eingeben(f.querySelector('[name="text"]'), "Notiz mit Datei");
+      klick(f.querySelector('button[type="submit"]'));
+      await bis(function () { var n = notizMit("Notiz mit Datei"); return n && n.querySelector(".anhang-name"); }, 4000, "Anhang in der Notiz");
+      pruefe(notizMit("Notiz mit Datei").querySelector(".anhang-name").textContent === "schnelltest.txt", "falscher Dateiname");
+    }],
+    ["Bilderarchiv öffnet sich", async function () {
+      await ansicht("notizen");
+      klick('[data-aktion="archiv-auf"]:not([data-kontext])');
+      await bis(function () { return sheetOffen("Bilderarchiv"); }, 3000, "Bilderarchiv-Fenster");
+      schliessen();
+    }],
+    ["Doing anlegen, Haken setzen, einklappen", async function () {
+      await ansicht("doings");
+      var f = await bis(function () { return $('[data-form="doing-neu"]'); }, 2000, "Doing-Formular");
+      eingeben(f.querySelector('[name="text"]'), "Schnelltest Doing");
+      klick(f.querySelector('button[type="submit"]'));
+      var d = await bis(function () { return $$(".doing").find(function (li) { return li.textContent.indexOf("Schnelltest Doing") !== -1; }); }, 2000, "Doing erscheint");
+      klick(d.querySelector(".haken"));
+      await bis(function () { return $$(".doing.fertig").length; }, 2000, "erledigt");
+      /* Die Liste wird nach dem Haken neu gezeichnet: das Element wieder suchen */
+      d = $$(".doing").find(function (li) { return li.textContent.indexOf("Schnelltest Doing") !== -1; });
+      klick(d.querySelector(".falt"));
+      await bis(function () { return $$(".doing.eingeklappt").length; }, 2000, "Doing eingeklappt");
+    }],
+    ["Langdruck auf Doing öffnet das Menü", async function () {
+      var d = $$(".doing").find(function (li) { return li.textContent.indexOf("Schnelltest Doing") !== -1; });
+      await langdruck(d.querySelector(".doing-text"));
+      await bis(function () { return $(".aktion-liste"); }, 2000, "Menü");
+      klick('.aktion-liste [data-aktion="doing-loeschen"]');
+      await bis(function () { return !$$(".doing").find(function (li) { return li.textContent.indexOf("Schnelltest Doing") !== -1; }); }, 2000, "Doing gelöscht");
+    }],
+    ["Projekt anlegen und per Langdruck löschen", async function () {
+      klick('[data-aktion="projekt-neu"]');
+      var f = await bis(function () { return $('[data-form="projekt-speichern"]'); }, 2000, "Projekt-Formular");
+      eingeben(f.querySelector('[name="titel"]'), "Schnelltest Projekt");
+      klick(f.querySelector('button[type="submit"]'));
+      var chip = await bis(function () { return $$(".projekt-chip").find(function (c) { return c.textContent === "Schnelltest Projekt"; }); }, 2000, "Projekt-Chip");
+      var anzahl = $$(".projekt-chip[data-lang]").length;
+      await langdruck(chip);
+      await bis(function () { return !$$(".projekt-chip").find(function (c) { return c.textContent === "Schnelltest Projekt"; }); }, 2000, "Projekt gelöscht");
+      pruefe($$(".projekt-chip[data-lang]").length === anzahl - 1, "Projektzahl stimmt nicht");
+    }],
+    ["Geteiltes: Fenster „Wohin soll diese Notiz?“ ordnet zu", async function () {
+      /* Alte, nicht zugeordnete Teilen-Einträge aus früheren Läufen entfernen */
+      schliessen();
+      await W.geteilteLoeschen((await W.geteilteHolen()).map(function (t) { return t.id; }));
+      W.geteilteSchlange = [];
+      await W.teilenAblegen("Schnelltest geteilt", "Text vom Teilen", "", []);
+      await W.uebernehmeGeteilte();
+      await bis(function () { return sheetOffen() && $(".aktion-liste [data-aktion='geteilt-zuordnen']"); }, 3000, "Zuordnungs-Fenster");
+      klick($(".aktion-liste [data-aktion='geteilt-zuordnen']"));
+      await bis(function () { return $$(".notiz-karte").some(function (li) { return li.textContent.indexOf("Schnelltest geteilt") !== -1; }); }, 3000, "Notiz aus dem Teilen");
+      await bis(function () { return !sheetOffen(); }, 2000, "Fenster geschlossen");
+    }],
+    ["Sicherung-Fenster öffnet sich", async function () {
+      klick('[data-aktion="sichern"]');
+      await bis(function () { return sheetOffen("Sichern und teilen"); }, 2000, "Sichern-Fenster");
+      schliessen();
+    }],
+    ["Keine Fehler in der Konsole", async function () {
+      pruefe(fehler.length === 0, "Fehler: " + fehler.slice(0, 3).join(" | "));
+    }]
+  ];
+
+  function gespeichertSichern() {
+    var stand = {};
+    SCHLUESSEL.forEach(function (k) { stand[k] = localStorage.getItem(k); });
+    return stand;
+  }
+  function gespeichertZurueck(stand) {
+    SCHLUESSEL.forEach(function (k) {
+      if (stand[k] === null) localStorage.removeItem(k); else localStorage.setItem(k, stand[k]);
+    });
+  }
+
+  document.getElementById("los").addEventListener("click", async function () {
+    var knopf = this;
+    knopf.disabled = true;
+    summe.textContent = "";
+    summe.className = "";
+    liste.innerHTML = "";
+    if (!lokal) {
+      summe.textContent = "Bitte über localhost öffnen (nicht als Datei).";
+      summe.className = "fail";
+      knopf.disabled = false;
+      return;
+    }
+    var stand = gespeichertSichern();
+    SCHLUESSEL.forEach(function (k) { localStorage.removeItem(k); });
+    var gut = 0;
+    for (var i = 0; i < TESTS.length; i++) {
+      var punkt = document.createElement("li");
+      punkt.textContent = TESTS[i][0] + " …";
+      liste.appendChild(punkt);
+      try {
+        await TESTS[i][1]();
+        punkt.className = "ok";
+        punkt.textContent = "✔ " + TESTS[i][0];
+        gut++;
+      } catch (e) {
+        punkt.className = "fail";
+        punkt.textContent = "✘ " + TESTS[i][0];
+        var zeile = document.createElement("small");
+        zeile.textContent = e.message;
+        punkt.appendChild(zeile);
+      }
+    }
+    gespeichertZurueck(stand);
+    summe.textContent = gut === TESTS.length ? "Alle " + gut + " Prüfungen bestanden." : (TESTS.length - gut) + " von " + TESTS.length + " fehlgeschlagen.";
+    summe.className = gut === TESTS.length ? "ok" : "fail";
+    knopf.disabled = false;
+  });
+})();
+</script>
+</body>
+</html>
