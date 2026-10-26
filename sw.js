@@ -6,7 +6,7 @@
 
 importScripts("./kern.js", "./dateien.js");
 
-var FASSUNG = "2026-10-26-1";
+var FASSUNG = "2026-10-26-2";
 var SPEICHER = "stick-to-the-plan-" + FASSUNG;
 var GRUNDGERUEST = [
   "./", "./index.html", "./app.css", "./daten.js", "./kern.js", "./dateien.js", "./app.js",

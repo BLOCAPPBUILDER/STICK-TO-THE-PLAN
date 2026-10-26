@@ -312,7 +312,8 @@ function anhangHinzufuegen(art, id, dateiListe) {
 /* Ausgewählte Dateien für das Formular oben (noch nicht gespeichert). */
 function wartendBereichHtml(kontext) {
   return '<div class="wartend-liste" data-wartend-liste="' + kontext + '">' + wartendHtml(kontext) + "</div>" +
-    '<label class="knopf knopf-zweit datei-knopf">+ Foto oder Datei<input type="file" multiple class="versteckt" data-datei="wartend" data-kontext="' + kontext + '"></label>';
+    '<label class="knopf knopf-zweit datei-knopf">+ Foto oder Datei<input type="file" multiple class="versteckt" data-datei="wartend" data-kontext="' + kontext + '"></label>' +
+    '<button type="button" class="knopf knopf-zweit datei-knopf" data-aktion="archiv-auf" data-kontext="' + kontext + '">Aus Archiv</button>';
 }
 
 function wartendHtml(kontext) {
@@ -335,6 +336,36 @@ function wartendHinzufuegen(kontext, dateiListe) {
   })).then(function (liste) {
     wartend[kontext] = wartend[kontext].concat(liste);
     aktualisiereWartend(kontext);
+  }, dateiFehler);
+}
+
+/* Bilderarchiv: alle Bilder, die gesammelt wurden (geteilt oder hochgeladen). Aus dem Archiv werden Kopien an Notizen gehängt. */
+function oeffneArchiv(kontext) {
+  archivHolen().then(function (liste) {
+    var zusatz = kontext ? ' data-kontext="' + kontext + '"' : "";
+    var h = '<div class="formular-knoepfe"><label class="knopf knopf-zweit datei-knopf">+ Bild ins Archiv<input type="file" accept="image/*" multiple class="versteckt" data-datei="archiv"' + zusatz + "></label></div>";
+    if (!liste.length) {
+      h += '<p class="leer">Noch keine Bilder im Archiv. Screenshots, die du aus einer anderen App an Stick to the plan teilst, landen hier.</p>';
+    } else {
+      h += '<ul class="archiv-raster">' + liste.map(function (s) {
+        return '<li class="archiv-kachel"><a class="anhang bild" data-anhang-id="' + esc(s.id) + '" data-name="' + esc(s.name) + '"><img class="anhang-bild" alt="' + esc(s.name) + '"></a>' +
+          '<div class="archiv-knoepfe">' +
+          (kontext ? '<button type="button" class="klein" data-aktion="archiv-waehlen" data-id="' + esc(s.id) + '" data-kontext="' + kontext + '">Hinzufügen</button>' : "") +
+          '<button type="button" class="klein gefahr" data-aktion="archiv-loeschen" data-id="' + esc(s.id) + '"' + zusatz + ">Entfernen</button></div></li>";
+      }).join("") + "</ul>";
+    }
+    oeffneSheet(kontext ? "Bild aus dem Archiv" : "Bilderarchiv", h, "archiv");
+  }).catch(dateiFehler);
+}
+
+/* Bilder ins Archiv hochladen (ohne Notiz). Verkleinerte Kopien, wie bei Notizen. */
+function archivHinzufuegen(dateiListe, kontext) {
+  var neu = Array.from(dateiListe);
+  if (!neu.length) return;
+  Promise.all(neu.map(function (f) {
+    return verkleinereBild(f).then(function (b) { return dateiSpeichern(b, f.name, true); });
+  })).then(function () {
+    oeffneArchiv(kontext || null);
   }, dateiFehler);
 }
 
@@ -573,6 +604,8 @@ function notizenSeiteHtml() {
       '<div class="formular-knoepfe"><span class="spacer"></span><button type="submit" class="knopf">Speichern</button></div>' +
     "</form></div></section>";
 
+  h += '<div class="werkzeug"><button type="button" class="chip" data-aktion="archiv-auf">Bilderarchiv</button></div>';
+
   if (!pr.notizen.length) return h + '<p class="leer">Noch keine Notizen. Gedanken, Lieder, Links und Fotos landen hier.</p>';
   return h + '<ul class="notiz-liste">' + pr.notizen.map(notizKarte).join("") + "</ul>";
 }
@@ -744,15 +777,14 @@ function blobZuDatenUrl(blob) {
 
 /* Die Sicherung enthält die Daten und alle Dateien (als Datenadresse). */
 function exportiere() {
-  Promise.all(alleAnhangIds(daten).map(function (aid) {
-    return dateiHolen(aid).then(function (satz) {
-      if (!satz) return null;
+  dateienAlle().then(function (alle) {
+    return Promise.all(alle.map(function (satz) {
       return blobZuDatenUrl(satz.blob).then(function (url) {
-        return { id: satz.id, name: satz.name, typ: satz.typ, groesse: satz.groesse, daten: url };
+        return { id: satz.id, name: satz.name, typ: satz.typ, groesse: satz.groesse, archiv: !!satz.archiv, daten: url };
       });
-    });
-  })).then(function (dateien) {
-    var sicherung = { fassung: daten.fassung, projekte: daten.projekte, dateien: dateien.filter(Boolean) };
+    }));
+  }).then(function (dateien) {
+    var sicherung = { fassung: daten.fassung, projekte: daten.projekte, dateien: dateien };
     var blob = new Blob([JSON.stringify(sicherung)], { type: "application/json" });
     var url = URL.createObjectURL(blob);
     var a = document.createElement("a");
@@ -790,7 +822,7 @@ function importiere(datei) {
       return d && typeof d.id === "string" && typeof d.daten === "string";
     }).map(function (d) {
       return fetch(d.daten).then(function (antwort) { return antwort.blob(); }).then(function (blob) {
-        return { id: d.id, name: String(d.name || "Datei"), typ: String(d.typ || blob.type), groesse: blob.size, blob: blob };
+        return { id: d.id, name: String(d.name || "Datei"), typ: String(d.typ || blob.type), groesse: blob.size, archiv: !!d.archiv, erstellt: Date.now(), blob: blob };
       });
     })).then(dateienErsetzen).then(function () {
       daten = neu;
@@ -805,29 +837,40 @@ function importiere(datei) {
   leser.readAsText(datei);
 }
 
-/* Fotos und Texte, die aus anderen Apps geteilt wurden, werden zu neuen Notizen (siehe sw.js). */
+/* Geteilte Inhalte (siehe sw.js) bleiben gespeichert, bis man sie einem Projekt zuordnet oder verwirft.
+   Beim Start fragt ein Fenster, wohin die Notiz soll. */
+var geteilteSchlange = [];
+
 function uebernehmeGeteilte() {
   var suche = location.search;
-  if (!/[?&]geteilt=/.test(suche)) return;
-  history.replaceState(null, "", location.pathname);
+  if (/[?&]geteilt=/.test(suche)) history.replaceState(null, "", location.pathname);
   if (/geteilt=fehler/.test(suche)) alert("Das Geteilte konnte nicht gespeichert werden.");
   geteilteHolen().then(function (liste) {
-    var uebernommen = 0;
-    liste.forEach(function (t) {
-      var text = [t.titel, t.text].filter(Boolean).join("\n");
-      if (!text && !t.link && !(t.anhaenge && t.anhaenge.length)) return;
-      var jetzt = Date.now();
-      P().notizen.unshift({ id: neueId(), text: text, link: t.link || "", anhaenge: t.anhaenge || [], erstellt: jetzt, ordnung: jetzt });
-      uebernommen++;
+    geteilteSchlange = liste.filter(function (t) {
+      return t.text || t.titel || t.link || (t.anhaenge && t.anhaenge.length);
     });
-    ui.ansicht = "notizen";
-    speichereUi();
-    return geteilteLoeschen(liste.map(function (t) { return t.id; })).then(function () {
-      if (uebernommen) aktualisiere();
-    });
+    zeigeGeteilte();
   }).catch(function () {
-    alert("Das Geteilte konnte nicht übernommen werden.");
+    alert("Das Geteilte konnte nicht geladen werden.");
   });
+}
+
+function zeigeGeteilte() {
+  if (!geteilteSchlange.length) return;
+  var t = geteilteSchlange[0];
+  var titel = (t.titel || t.text || t.link || (t.anhaenge[0] ? t.anhaenge[0].name : "Geteiltes")).slice(0, 60);
+  /* Das aktuelle Projekt steht oben */
+  var projekte = daten.projekte.slice().sort(function (a, b) {
+    return (a.id === P().id ? -1 : 0) - (b.id === P().id ? -1 : 0);
+  });
+  var h = '<p class="hinweis">Wohin soll diese Notiz?</p>' +
+    anhangHtml(t.anhaenge) +
+    '<div class="aktion-liste">' +
+    projekte.map(function (p) {
+      return '<button type="button" data-aktion="geteilt-zuordnen" data-id="' + esc(p.id) + '">' + esc(p.name) + "</button>";
+    }).join("") +
+    '<button type="button" class="gefahr" data-aktion="geteilt-verwerfen">Verwerfen</button></div>';
+  oeffneSheet(titel, h, "geteilt");
 }
 
 /* ---------- Fenster (Sheets) ---------- */
@@ -1114,6 +1157,57 @@ document.addEventListener("click", function (e) {
     case "teilen":
       teileEintrag(el.getAttribute("data-art"), id, el);
       break;
+    case "geteilt-zuordnen": {
+      var zielProjekt = findeProjekt(id);
+      var geteilt = geteilteSchlange.shift();
+      if (!zielProjekt || !geteilt) break;
+      var jetztGeteilt = Date.now();
+      zielProjekt.notizen.unshift({
+        id: neueId(),
+        text: [geteilt.titel, geteilt.text].filter(Boolean).join("\n"),
+        link: geteilt.link || "",
+        anhaenge: geteilt.anhaenge || [],
+        erstellt: jetztGeteilt,
+        ordnung: jetztGeteilt
+      });
+      ui.aktivesProjekt = zielProjekt.id;
+      ui.ansicht = "notizen";
+      speichereUi();
+      geteilteLoeschen([geteilt.id]).catch(function () {});
+      schliesseSheet();
+      aktualisiere();
+      zeigeGeteilte();
+      break;
+    }
+    case "geteilt-verwerfen": {
+      if (!geteilteSchlange.length || !confirm("Dieses Geteilte verwerfen? Die Dateien dazu werden gelöscht.")) break;
+      var verworfen = geteilteSchlange.shift();
+      dateienLoeschen(anhangIds(verworfen)).catch(function () {});
+      geteilteLoeschen([verworfen.id]).catch(function () {});
+      schliesseSheet();
+      zeigeGeteilte();
+      break;
+    }
+    case "archiv-auf":
+      oeffneArchiv(el.getAttribute("data-kontext") || null);
+      break;
+    case "archiv-waehlen": {
+      var wk = el.getAttribute("data-kontext");
+      dateiHolen(id).then(function (satz) {
+        if (!satz) return;
+        wartend[wk].push({ name: satz.name, blob: satz.blob });
+        schliesseSheet();
+        aktualisiereWartend(wk);
+      }).catch(dateiFehler);
+      break;
+    }
+    case "archiv-loeschen":
+      if (confirm("Dieses Bild aus dem Archiv löschen? Notizen mit einer Kopie davon bleiben unverändert.")) {
+        dateienLoeschen([id]).then(function () {
+          oeffneArchiv(el.getAttribute("data-kontext") || null);
+        }, dateiFehler);
+      }
+      break;
     case "wartend-entfernen": {
       var kontext = el.getAttribute("data-kontext");
       wartend[kontext].splice(Number(el.getAttribute("data-index")), 1);
@@ -1160,6 +1254,9 @@ document.addEventListener("change", function (e) {
     importiere(t.files[0]);
   } else if (datei === "wartend") {
     wartendHinzufuegen(t.getAttribute("data-kontext"), t.files);
+    t.value = "";
+  } else if (datei === "archiv") {
+    archivHinzufuegen(t.files, t.getAttribute("data-kontext"));
     t.value = "";
   } else if (datei === "direkt") {
     anhangHinzufuegen(t.getAttribute("data-art"), t.getAttribute("data-id"), t.files);

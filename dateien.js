@@ -36,13 +36,16 @@ function anhangVon(satz) {
   return { id: satz.id, name: satz.name, typ: satz.typ, groesse: satz.groesse };
 }
 
-function dateiSpeichern(blob, name) {
+/* archiv: true für Bilder im Bilderarchiv. Notizen bekommen eigene Kopien, damit Löschen im Archiv nichts kaputt macht. */
+function dateiSpeichern(blob, name, archiv) {
   var satz = {
     id: neueId(),
     blob: blob,
     name: name || "Datei",
     typ: blob.type || "application/octet-stream",
-    groesse: blob.size
+    groesse: blob.size,
+    archiv: !!archiv,
+    erstellt: Date.now()
   };
   return dbVorgang(DATEI_STORE, "readwrite", function (s) { return s.put(satz); }).then(function () {
     return anhangVon(satz);
@@ -51,6 +54,20 @@ function dateiSpeichern(blob, name) {
 
 function dateiHolen(id) {
   return dbVorgang(DATEI_STORE, "readonly", function (s) { return s.get(id); });
+}
+
+/* Alle gespeicherten Dateien (für die Sicherung). */
+function dateienAlle() {
+  return dbVorgang(DATEI_STORE, "readonly", function (s) { return s.getAll(); }).then(function (liste) {
+    return liste || [];
+  });
+}
+
+/* Das Bilderarchiv: alle Bilder, die man für Notizen auswählen kann. Neueste zuerst. */
+function archivHolen() {
+  return dateienAlle().then(function (liste) {
+    return liste.filter(function (s) { return s.archiv; }).sort(function (a, b) { return (b.erstellt || 0) - (a.erstellt || 0); });
+  });
 }
 
 function dateienLoeschen(ids) {
@@ -75,8 +92,9 @@ function dateienErsetzen(liste) {
 }
 
 /* Geteiltes aus anderen Apps: der Service Worker legt Dateien und Eintrag ab, die App macht daraus Notizen. */
+/* Geteiltes wird nur als Notiz vorgemerkt, nicht ins Bilderarchiv. Die App fragt nach dem Projekt. */
 function teilenAblegen(titel, text, link, dateien) {
-  return Promise.all(dateien.map(function (d) { return dateiSpeichern(d, d.name); })).then(function (anhaenge) {
+  return Promise.all(dateien.map(function (d) { return dateiSpeichern(d, d.name, false); })).then(function (anhaenge) {
     var satz = { id: neueId(), erstellt: Date.now(), titel: titel, text: text, link: link, anhaenge: anhaenge };
     return dbVorgang(TEIL_STORE, "readwrite", function (s) { return s.put(satz); });
   });

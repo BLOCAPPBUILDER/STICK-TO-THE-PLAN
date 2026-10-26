@@ -225,7 +225,7 @@ label{ display:grid; gap:6px; font-size:13px; color:var(--text-dim); }
 .spacer{ flex:1; }
 
 /* ---------- Doings ---------- */
-.doings{ list-style:none; margin:0; padding:0; display:grid; gap:8px; }
+.doings{ list-style:none; margin:0; padding:0; display:grid; grid-template-columns:minmax(0,1fr); gap:8px; }
 .doing{
   display:flex; align-items:flex-start; gap:12px;
   padding:12px 14px; border-radius:18px;
@@ -252,7 +252,9 @@ label{ display:grid; gap:6px; font-size:13px; color:var(--text-dim); }
 .notiz-inhalt{ padding:16px 20px 20px; }
 .notiz-form{ display:grid; gap:8px; margin-bottom:14px; }
 .notiz-form .zeile{ display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; }
-.notiz-liste{ list-style:none; margin:0; padding:0; display:grid; gap:10px; }
+.notiz-liste{ list-style:none; margin:0; padding:0; display:grid; grid-template-columns:minmax(0,1fr); gap:10px; }
+.notiz-karte, .doing{ min-width:0; }
+.notiz-karte p, .doing-text{ overflow-wrap:anywhere; }
 .notiz-karte{
   padding:14px; border-radius:18px;
   border:1px solid var(--border); background:var(--surface-2);
@@ -474,6 +476,11 @@ label{ display:grid; gap:6px; font-size:13px; color:var(--text-dim); }
 
 /* Langdruck-Menü: große Zeilen, Löschen in Rot */
 .aktion-liste{ display:grid; gap:8px; }
+
+/* Bilderarchiv: Kacheln mit Vorschau */
+.archiv-raster{ list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); gap:10px; }
+.archiv-kachel{ display:grid; gap:6px; min-width:0; }
+.archiv-knoepfe{ display:flex; flex-wrap:wrap; gap:4px; justify-content:space-between; }
 .aktion-liste button{
   display:flex; align-items:center; gap:12px; width:100%; padding:14px 16px;
   border:0; border-radius:16px; background:var(--surface-2); color:var(--text);
