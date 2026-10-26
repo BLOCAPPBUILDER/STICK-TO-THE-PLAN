@@ -41,21 +41,28 @@
   // Erststart und Speichern
   var erst = ladeDaten(attrappe());
   pruefe("Erststart: genau ein Projekt", erst.projekte.length === 1);
-  pruefe("Erststart: Projekt ohne Inhalte und ohne Rubriken", erst.projekte[0].doings.length === 0 && erst.projekte[0].rubriken.length === 0);
+  pruefe("Erststart: Projekt ohne Inhalte", erst.projekte[0].doings.length === 0 && erst.projekte[0].notizen.length === 0);
   pruefe("Erststart: Zeitmodus ist generisch", erst.projekte[0].zeitModus === "generisch");
+  pruefe("Erststart: keine Rubriken mehr", erst.projekte[0].rubriken === undefined);
 
   var speicher = attrappe();
   var d = ladeDaten(speicher);
-  d.projekte[0].doings.push({ id: "d1", rubrikId: null, text: "Test", notiz: "", prompt: "", faellig: "", erledigt: false, erstellt: 1, ordnung: 1 });
-  d.projekte[0].notizen.push({ id: "n1", text: "Lied", link: "https://youtu.be/abc", rubrikId: null, erstellt: 1, ordnung: 2 });
+  d.projekte[0].doings.push({ id: "d1", text: "Test", notiz: "", prompt: "", faellig: "", anhaenge: [], erledigt: false, erstellt: 1, ordnung: 1 });
+  d.projekte[0].notizen.push({ id: "n1", text: "Lied", link: "https://youtu.be/abc", anhaenge: [{ id: "a1", name: "Foto.jpg", typ: "image/jpeg", groesse: 10 }], erstellt: 1, ordnung: 2 });
   speichereDaten(d, speicher);
   var zurueck = ladeDaten(speicher);
   pruefe("Speichern und Laden ergibt denselben Stand", zurueck.projekte[0].doings.length === 1 && zurueck.projekte[0].notizen[0].link === "https://youtu.be/abc");
+  pruefe("Anhang-Angaben bleiben beim Speichern erhalten", zurueck.projekte[0].notizen[0].anhaenge[0].name === "Foto.jpg");
 
   // Alter Stand (Fassung 1) wird ein Projekt
-  var alt = saeubereDaten({ rubriken: [{ id: "r", name: "Musik" }], doings: [{ id: "x", rubrikId: "r", text: "A" }], notizen: [] });
+  var alt = saeubereDaten({ doings: [{ id: "x", text: "A" }], notizen: [] });
   pruefe("Fassung 1 wird ein Projekt", alt && alt.projekte.length === 1 && alt.projekte[0].doings.length === 1);
-  pruefe("Fassung 1: Rubrik bleibt erhalten", alt && alt.projekte[0].rubriken[0].name === "Musik");
+
+  // Rubriken aus Fassung 2 werden beim Laden verworfen
+  var fassung2 = saeubereDaten({ fassung: 2, projekte: [{ id: "p", name: "Alt", rubriken: [{ id: "r", name: "Musik" }], doings: [{ id: "x", rubrikId: "r", text: "A" }], notizen: [] }] });
+  pruefe("Fassung 2: Rubriken werden verworfen", fassung2 && fassung2.projekte[0].rubriken === undefined);
+  pruefe("Fassung 2: Doing bleibt ohne Rubrik erhalten", fassung2 && fassung2.projekte[0].doings[0].rubrikId === undefined && fassung2.projekte[0].doings.length === 1);
+  pruefe("Neuer Stand ist Fassung 3", saeubereDaten({ projekte: [] }).fassung === 3);
 
   // Kaputter Stand
   var kaputt = attrappe({ "doings-daten-v1": "{kaputt" });
@@ -68,18 +75,17 @@
   pruefe("Import: null wird abgelehnt", saeubereDaten(null) === null);
   var importiert = saeubereDaten({ projekte: [{
     id: "p", name: "Umzug",
-    rubriken: [{ id: "r", name: "Kisten" }],
-    doings: [{ id: "x", rubrikId: "gibt-es-nicht", text: "A", faellig: "2026-13-45" }],
-    notizen: [{ id: "y", text: "B", link: "javascript:alert(1)", rubrikId: "r" }],
+    doings: [{ id: "x", text: "A", faellig: "2026-13-45" }],
+    notizen: [{ id: "y", text: "B", link: "javascript:alert(1)", anhaenge: [{ id: "ok", name: "Lied.mp3", typ: "audio/mpeg", groesse: 5 }, { name: "ohne Kennung" }, "kaputt"] }],
     meilensteine: [{ id: "m", titel: "Schlüssel", datum: "2026-11-01" }]
   }] });
-  pruefe("Import: unbekannte Rubrik wird zu Ohne Rubrik", importiert.projekte[0].doings[0].rubrikId === null);
   pruefe("Import: ungültiges Datum wird geleert", importiert.projekte[0].doings[0].faellig === "");
   pruefe("Import: gefährlicher Link wird geleert", importiert.projekte[0].notizen[0].link === "");
   pruefe("Import: Meilenstein bleibt erhalten", importiert.projekte[0].meilensteine[0].datum === "2026-11-01");
+  pruefe("Import: nur gültige Anhang-Angaben bleiben", importiert.projekte[0].notizen[0].anhaenge.length === 1 && importiert.projekte[0].notizen[0].anhaenge[0].id === "ok");
 
   // Zeitleiste im Datumsmodus: datierte Einträge aufsteigend, ohne Datum hinten
-  var pz = { zeitModus: "datum", rubriken: [], notizen: [], doings: [
+  var pz = { zeitModus: "datum", notizen: [], doings: [
     { id: "a", text: "spät", faellig: "2026-12-01", erstellt: 1, ordnung: 1 },
     { id: "b", text: "ohne", faellig: "", erstellt: 2, ordnung: 2 },
     { id: "c", text: "früh", faellig: "2026-11-01", erstellt: 3, ordnung: 3 }
@@ -102,12 +108,14 @@
   var lzNeu = zeitleisteEintraege({ zeitModus: "datum", doings: [], notizen: [], meilensteine: [{ id: "q", titel: "x", datum: "", erstellt: 1, ordnung: 1 }] });
   pruefe("Meilenstein ohne Datum bleibt sichtbar", lzNeu.length === 1 && lzNeu[0].datum === "");
 
-  // Rubriken löschen
-  var r = { rubriken: [{ id: "r1", name: "Musik" }], doings: [{ id: "a", rubrikId: "r1", text: "x" }], notizen: [{ id: "b", rubrikId: "r1", text: "y" }] };
-  rubrikLoeschen(r, "r1");
-  pruefe("Rubrik löschen entfernt die Rubrik", r.rubriken.length === 0);
-  pruefe("Rubrik löschen lässt Doings und Notizen bestehen", r.doings.length === 1 && r.notizen.length === 1);
-  pruefe("Rubrik löschen setzt Zuordnung auf Ohne Rubrik", r.doings[0].rubrikId === null && r.notizen[0].rubrikId === null);
+  // Dateien: Kennungen sammeln, auch über alle Projekte
+  var mitDateien = { projekte: [
+    { id: "p1", doings: [{ id: "x", anhaenge: [{ id: "f1" }] }], notizen: [{ id: "y", anhaenge: [{ id: "f2" }, { id: "f3" }] }], meilensteine: [] },
+    { id: "p2", doings: [], notizen: [{ id: "z", anhaenge: [{ id: "f4" }] }], meilensteine: [] }
+  ] };
+  pruefe("Anhang-Kennungen eines Projekts", anhangIdsVon(mitDateien.projekte[0]).join(",") === "f1,f2,f3");
+  pruefe("Anhang-Kennungen aller Projekte", alleAnhangIds(mitDateien).length === 4);
+  pruefe("Anhang-Kennungen eines Eintrags ohne Anhang leer", anhangIds({ id: "k" }).length === 0);
 
   // Kennungen und Vorlagen
   var ids = {};

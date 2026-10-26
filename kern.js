@@ -1,10 +1,11 @@
 /* Stick to the plan – Datenkern: Speichern, Prüfen, Hilfsfunktionen. Ohne Oberfläche,
    damit der Einheitstest (einheitstest.html) diese Funktionen direkt prüfen kann.
-   Alles bleibt im Browser (localStorage). Nichts wird ins Netz geschickt.
+   Alles bleibt im Browser (localStorage, Dateien in IndexedDB). Nichts wird ins Netz geschickt.
 
-   Aufbau: { fassung: 2, projekte: [ { id, name, zeitModus, rubriken, doings, notizen, meilensteine } ] }
+   Aufbau: { fassung: 3, projekte: [ { id, name, zeitModus, doings, notizen, meilensteine } ] }
+   doings und notizen haben „anhaenge“: Angaben zu Fotos und Dateien (den Inhalt liefert dateien.js).
    zeitModus: "datum" (Zeitleiste mit Datum) oder "generisch" (nur Reihenfolge).
-   Ältere Stände (Fassung 1, ohne Projekte) werden beim Laden als ein Projekt übernommen. */
+   Ältere Stände werden beim Laden übernommen; Rubriken aus Fassung 2 entfallen. */
 
 var DOINGS_SCHLUESSEL = "doings-daten-v1";
 var STANDARD_PROJEKT_NAME = "Mein Projekt";
@@ -22,22 +23,32 @@ function neueId() {
 }
 
 function leerProjekt(name) {
-  return { id: neueId(), name: name, zeitModus: "generisch", rubriken: [], doings: [], notizen: [], meilensteine: [] };
+  return { id: neueId(), name: name, zeitModus: "generisch", doings: [], notizen: [], meilensteine: [] };
 }
 
-/* Beim ersten Start: ein leeres Projekt, keine Rubriken, keine Inhalte. */
+/* Beim ersten Start: ein leeres Projekt ohne Inhalte. */
 function startDaten() {
-  var d = { fassung: 2, projekte: [leerProjekt(STANDARD_PROJEKT_NAME)] };
-  STARTRUBRIKEN.forEach(function (name) {
-    d.projekte[0].rubriken.push({ id: neueId(), name: name });
-  });
-  return d;
+  return { fassung: 3, projekte: [leerProjekt(STANDARD_PROJEKT_NAME)] };
 }
 
 /* Reihenfolge der Zeitleiste. Fehlt sie, zählt der Zeitpunkt der Erstellung. */
 function ordnungVon(x) {
   var n = Number(x.ordnung);
   return isFinite(n) && n !== 0 ? n : (Number(x.erstellt) || Date.now());
+}
+
+/* Nur saubere Angaben zu Dateien übernehmen. */
+function saeubereAnhaenge(roh) {
+  return (Array.isArray(roh) ? roh : []).filter(function (a) {
+    return a && typeof a.id === "string" && typeof a.name === "string";
+  }).map(function (a) {
+    return {
+      id: a.id,
+      name: a.name.slice(0, 200),
+      typ: String(a.typ || "application/octet-stream"),
+      groesse: Number(a.groesse) || 0
+    };
+  });
 }
 
 function saeubereProjekt(roh) {
@@ -47,29 +58,19 @@ function saeubereProjekt(roh) {
     id: roh.id,
     name: name,
     zeitModus: roh.zeitModus === "datum" ? "datum" : "generisch",
-    rubriken: [], doings: [], notizen: [], meilensteine: []
+    doings: [], notizen: [], meilensteine: []
   };
-
-  p.rubriken = (Array.isArray(roh.rubriken) ? roh.rubriken : []).filter(function (r) {
-    return r && typeof r.id === "string" && typeof r.name === "string" && r.name.trim() !== "";
-  }).map(function (r) {
-    return { id: r.id, name: r.name.trim() };
-  });
-  var rubrikIds = p.rubriken.map(function (r) { return r.id; });
-  function rubrikVorhanden(id) {
-    return rubrikIds.indexOf(id) !== -1 ? id : null;
-  }
 
   p.doings = (Array.isArray(roh.doings) ? roh.doings : []).filter(function (x) {
     return x && typeof x.id === "string" && typeof x.text === "string";
   }).map(function (x) {
     return {
       id: x.id,
-      rubrikId: rubrikVorhanden(x.rubrikId),
       text: x.text,
       notiz: String(x.notiz || ""),
       prompt: String(x.prompt || ""),
       faellig: gueltigesDatum(x.faellig) ? x.faellig : "",
+      anhaenge: saeubereAnhaenge(x.anhaenge),
       erledigt: !!x.erledigt,
       erstellt: Number(x.erstellt) || Date.now(),
       ordnung: ordnungVon(x)
@@ -83,7 +84,7 @@ function saeubereProjekt(roh) {
       id: x.id,
       text: x.text,
       link: sichererLink(String(x.link || "")),
-      rubrikId: rubrikVorhanden(x.rubrikId),
+      anhaenge: saeubereAnhaenge(x.anhaenge),
       erstellt: Number(x.erstellt) || Date.now(),
       ordnung: ordnungVon(x)
     };
@@ -110,14 +111,14 @@ function saeubereDaten(roh) {
   var projekte = null;
   if (Array.isArray(roh.projekte)) {
     projekte = roh.projekte.map(saeubereProjekt).filter(function (p) { return p; });
-  } else if (Array.isArray(roh.rubriken) || Array.isArray(roh.doings) || Array.isArray(roh.notizen)) {
+  } else if (Array.isArray(roh.doings) || Array.isArray(roh.notizen)) {
     /* Fassung 1: alles lag auf der obersten Ebene - wird ein Projekt */
-    var alt = saeubereProjekt({ id: neueId(), name: STANDARD_PROJEKT_NAME, rubriken: roh.rubriken, doings: roh.doings, notizen: roh.notizen });
+    var alt = saeubereProjekt({ id: neueId(), name: STANDARD_PROJEKT_NAME, doings: roh.doings, notizen: roh.notizen });
     projekte = alt ? [alt] : null;
   }
   if (!projekte) return null;
   if (!projekte.length) projekte = [leerProjekt(STANDARD_PROJEKT_NAME)];
-  return { fassung: 2, projekte: projekte };
+  return { fassung: 3, projekte: projekte };
 }
 
 /* Liest den Stand aus dem Speicher. Ist er kaputt, bleibt eine Sicherheitskopie erhalten. */
@@ -230,15 +231,23 @@ function zeitSchiebe(projekt, id, richtung) {
   return true;
 }
 
-function rubrikName(projekt, id) {
-  var r = projekt.rubriken.find(function (x) { return x.id === id; });
-  return r ? r.name : "";
+/* Kennungen der Dateien an einem Doing oder einer Notiz. */
+function anhangIds(eintrag) {
+  return (eintrag.anhaenge || []).map(function (a) { return a.id; });
 }
 
-/* Löscht eine Rubrik. Ihre Doings und Notizen bleiben und landen in „Ohne Rubrik“. */
-function rubrikLoeschen(projekt, id) {
-  projekt.rubriken = projekt.rubriken.filter(function (r) { return r.id !== id; });
-  projekt.doings.forEach(function (d) { if (d.rubrikId === id) d.rubrikId = null; });
-  projekt.notizen.forEach(function (n) { if (n.rubrikId === id) n.rubrikId = null; });
-  return projekt;
+/* Kennungen aller Dateien eines Projekts (für das Löschen). */
+function anhangIdsVon(projekt) {
+  var ids = [];
+  projekt.doings.concat(projekt.notizen).forEach(function (x) {
+    ids = ids.concat(anhangIds(x));
+  });
+  return ids;
+}
+
+/* Kennungen aller Dateien in allen Projekten (für die Sicherung). */
+function alleAnhangIds(stand) {
+  var ids = [];
+  stand.projekte.forEach(function (p) { ids = ids.concat(anhangIdsVon(p)); });
+  return ids;
 }

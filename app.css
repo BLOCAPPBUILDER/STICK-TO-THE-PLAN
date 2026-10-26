@@ -192,7 +192,6 @@ input, select, textarea{
 textarea{ resize:vertical; min-height:74px; line-height:1.45; }
 label{ display:grid; gap:6px; font-size:13px; color:var(--text-dim); }
 .schnell{ display:grid; gap:8px; margin-bottom:12px; }
-@media (min-width:600px){ .schnell{ grid-template-columns:minmax(0,1fr) 180px auto; } }
 .knopf{
   border:0; border-radius:999px; padding:12px 20px;
   background:var(--accent); color:var(--accent-text); font-weight:700; white-space:nowrap;
@@ -225,16 +224,7 @@ label{ display:grid; gap:6px; font-size:13px; color:var(--text-dim); }
 .app-link{ margin:4px 2px 10px; padding:10px 12px; border-radius:var(--ecke); background:var(--surface-2); border:1px solid var(--border); font-size:13px; word-break:break-all; user-select:all; }
 .spacer{ flex:1; }
 
-/* ---------- Doings nach Rubriken ---------- */
-.rubrik{ margin-top:14px; }
-.rubrik-kopf{ display:flex; align-items:center; gap:6px; }
-.rubrik-auf{
-  flex:1; min-width:0; display:flex; align-items:center; gap:10px;
-  padding:6px 2px; border:0; background:none; text-align:left;
-  font-size:15px; font-weight:700; color:var(--text);
-}
-.rubrik-auf .chev{ width:16px; height:16px; }
-.zaehl{ margin-left:auto; font-size:13px; font-weight:500; color:var(--text-dim); }
+/* ---------- Doings ---------- */
 .doings{ list-style:none; margin:0; padding:0; display:grid; gap:8px; }
 .doing{
   display:flex; align-items:flex-start; gap:12px;
@@ -342,8 +332,6 @@ label{ display:grid; gap:6px; font-size:13px; color:var(--text-dim); }
 .zeit-schnell .schnell-zeile{ grid-template-columns:minmax(0,auto) auto auto; }
 .zeit-karte{ padding:16px 18px 18px; }
 .zeit-modus{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
-.notiz-karte-gross{ padding:16px; margin-bottom:14px; }
-.notiz-karte-gross .notiz-form{ margin:0; }
 .faellig{ color:var(--accent-ink) !important; }
 
 /* Zeitleiste horizontal: Strahl läuft von links nach rechts, Tage sind Spalten */
@@ -435,6 +423,67 @@ label{ display:grid; gap:6px; font-size:13px; color:var(--text-dim); }
 
 /* Mehr Platz für die Karten, weniger Scrollen */
 .zeit .tag.oben .tag-liste, .zeit .tag.unten .tag-liste{ max-height:calc(50% - 100px); }
+
+/* Einklappen: Pfeil rechts oben an jeder Notiz und jedem Doing */
+.karte-kopf{ display:flex; align-items:flex-start; gap:8px; }
+.karte-text{ flex:1; min-width:0; }
+.karte-text p.kurz{ margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.falt{
+  flex:none; width:32px; height:32px; margin:-4px -6px 0 0; padding:0;
+  display:grid; place-items:center; border:0; border-radius:10px; background:none; color:var(--text-dim);
+}
+.falt:hover{ color:var(--text); }
+.falt .chev{ width:18px; height:18px; }
+.notiz-karte.eingeklappt{ padding-top:12px; padding-bottom:12px; }
+.notiz-karte.eingeklappt p{ margin:0; }
+
+/* Langdruck: Doings und Notizen sind nicht markierbar, damit das Menü ohne Textauswahl erscheint */
+.doing, .notiz-karte, .projekt-chip{ -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+
+/* Doing mit Details: Text oben, Dateien darunter */
+.doing-mitte{ flex:1; min-width:0; display:grid; gap:8px; justify-items:start; }
+.doing-mitte .doing-text{ width:100%; }
+
+/* Fotos und Dateien: Galerie in Doings und Notizen */
+.anhang-galerie{ list-style:none; margin:4px 0 0; padding:0; display:grid; grid-template-columns:repeat(auto-fill,minmax(96px,1fr)); gap:8px; width:100%; }
+.notiz-karte .anhang-galerie{ margin-bottom:10px; }
+.anhang{
+  display:flex; align-items:center; justify-content:center; min-height:64px; padding:6px 8px;
+  border-radius:14px; overflow:hidden; border:1px solid var(--border); background:var(--surface);
+  color:var(--text); text-decoration:none; font-size:13px;
+}
+.anhang.bild{ padding:0; min-height:0; aspect-ratio:1; }
+.anhang-bild{ display:block; width:100%; height:100%; object-fit:cover; }
+.anhang-name{ overflow-wrap:anywhere; text-align:center; }
+.anhang-chip{
+  display:inline-flex; align-items:center; gap:4px; max-width:100%;
+  padding:4px 6px 4px 12px; border-radius:999px; border:1px solid var(--border); background:var(--surface-2); font-size:13px;
+}
+.anhang-chip .anhang-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.wartend-liste{ display:flex; flex-wrap:wrap; gap:6px; }
+.wartend-liste:empty{ display:none; }
+.datei-knopf{ justify-self:start; cursor:pointer; }
+.anhang-bereich{ display:grid; gap:8px; }
+.bereich-titel{ font-size:13px; color:var(--text-dim); }
+.anhang-verwaltung{ list-style:none; margin:0; padding:0; display:grid; gap:6px; }
+.anhang-zeile{
+  display:flex; align-items:center; gap:8px; padding:8px 10px;
+  border-radius:14px; border:1px solid var(--border); background:var(--surface-2); font-size:14px;
+}
+.anhang-zeile .anhang-name{ flex:1; min-width:0; text-align:left; }
+
+/* Langdruck-Menü: große Zeilen, Löschen in Rot */
+.aktion-liste{ display:grid; gap:8px; }
+.aktion-liste button{
+  display:flex; align-items:center; gap:12px; width:100%; padding:14px 16px;
+  border:0; border-radius:16px; background:var(--surface-2); color:var(--text);
+  font-size:16px; font-weight:600; text-align:left;
+}
+.aktion-liste button.gefahr{ color:var(--gefahr); }
+
+/* Notizen-Eingabe einklappbar wie Doings */
+.notiz-eingabe .abschnitt-body{ padding-top:4px; }
+.notiz-eingabe .notiz-form{ margin-bottom:0; }
 
 /* Kopf: Logo oben links, darunter die Überschrift des Bereichs */
 .kopf{ display:block; max-width:640px; padding:calc(env(safe-area-inset-top) + 14px) 16px 6px; }

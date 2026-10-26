@@ -1,8 +1,5 @@
-/* Doings – feste Angaben: Start-Rubriken und die vorgefertigten Promts.
+/* Stick to the plan – feste Angaben: die vorgefertigten Promts.
    Neue Promts einfach unten anhängen (id eindeutig, ohne Leerzeichen). */
-
-/* Bewusst leer: die App legt beim Start keine Rubriken und keine Inhalte aus anderen Projekten an. */
-var STARTRUBRIKEN = [];
 
 var PROMT_VORLAGEN = [
   {

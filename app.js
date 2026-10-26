@@ -1,12 +1,14 @@
-/* Stick to the plan – Oberfläche. Die Datenfunktionen stehen in kern.js, die Vorlagen in daten.js.
-   Drei Ansichten unten in der Leiste: Doings, Notizen, Zeitleiste. Alle Texte aus Daten laufen über esc(). */
+/* Stick to the plan – Oberfläche. Die Datenfunktionen stehen in kern.js, die Vorlagen in daten.js,
+   Fotos und Dateien in dateien.js. Drei Ansichten unten in der Leiste: Notizen, Doings, Zeitleiste.
+   Alle Texte aus Daten laufen über esc(). */
 
 var UI_SCHLUESSEL = "doings-ui-v1";
 var LANGDRUCK_MS = 600;
+var BILD_MAX = 1600;                             // lange Seite in Pixeln; größere Fotos werden verkleinert
 var ANSICHTEN = ["notizen", "doings", "zeit"];   // Notizen ist die Startseite
 var ANSICHT_TITEL = {
-  doings: ["Doings", "Aufgaben mit Rubriken und Datum"],
-  notizen: ["Notizen", "Gedanken, Lieder, Links – schnell festhalten"],
+  doings: ["Doings", "Aufgaben mit Datum, Notiz und Dateien"],
+  notizen: ["Notizen", "Gedanken, Lieder, Links, Fotos – schnell festhalten"],
   zeit: ["Zeitleiste", "Doings und Meilensteine auf dem Strahl"]
 };
 var ICON = {
@@ -16,6 +18,8 @@ var ICON = {
   zurueck: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>',
   plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
   stift: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>',
+  teilen: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4M5 13v6h14v-6"/></svg>',
+  muell: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>',
   hoch: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg>',
   runter: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>',
   hell: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
@@ -29,9 +33,14 @@ var NAECHSTES_THEMA = { system: "hell", hell: "dunkel", dunkel: "system" };
 
 var daten = ladeDaten(window.localStorage);
 var ui = ladeUi();
-var offenerSheet = null;            // "notizen", "formular" oder null
+var offenerSheet = null;            // "aktion", "formular" oder null
 var zeitFormOffen = false;          // Eingabe auf der Zeitleiste: erst nach Tipp auf den Strahl sichtbar
-var langdruckAusgeloest = false;    // verhindert, dass ein Langdruck zusätzlich als Tipp zählt
+var langdruck = null;               // Zeitgeber für den Langdruck
+var langdruckAusgeloest = false;    // der Tipp nach einem Langdruck zählt nicht
+var speichertGerade = false;        // verhindert doppeltes Absenden beim Speichern mit Dateien
+var wartend = { notiz: [], doing: [] };   // ausgewählte Dateien, die noch nicht gespeichert sind
+var vorschauUrls = {};              // Dateikennung -> Adresse zur Anzeige (je Datei nur einmal)
+var wisch = null;
 var dunkelAbfrage = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
 
 /* ---------- Einstellungen der Oberfläche (eigener Speicherschlüssel) ---------- */
@@ -42,11 +51,9 @@ function ladeUi() {
     ansicht: "notizen",
     aktivesProjekt: "",
     doingsOffen: true,
+    notizFormOffen: true,
     nurOffene: false,
-    rubrikDicht: {},
-    notizFilter: "alle",
-    letzteRubrik: "",
-    letzteNotizRubrik: ""
+    eingeklappt: {}                 // Doings und Notizen, die eingeklappt sind: { kennung: true }
   };
   try {
     var gespeichert = JSON.parse(window.localStorage.getItem(UI_SCHLUESSEL) || "null");
@@ -55,6 +62,7 @@ function ladeUi() {
     /* kaputte Einstellungen: Standard bleibt */
   }
   if (ANSICHTEN.indexOf(u.ansicht) === -1) u.ansicht = "notizen";
+  if (!u.eingeklappt || typeof u.eingeklappt !== "object") u.eingeklappt = {};
   if (!u.startFassung || u.startFassung < 2) {
     /* einmalig: alte Einstellungen starten ab jetzt auf Notizen */
     u.ansicht = "notizen";
@@ -107,19 +115,10 @@ function feld(form, name) {
 }
 
 function findeDoing(id) { return P().doings.find(function (d) { return d.id === id; }); }
-function findeRubrik(id) { return P().rubriken.find(function (r) { return r.id === id; }); }
 function findeNotiz(id) { return P().notizen.find(function (n) { return n.id === id; }); }
 function findeMeilenstein(id) { return P().meilensteine.find(function (m) { return m.id === id; }); }
 function findeVorlage(id) { return PROMT_VORLAGEN.find(function (p) { return p.id === id; }); }
 function findeProjekt(id) { return daten.projekte.find(function (p) { return p.id === id; }); }
-
-function rubrikOptionen(gewaehlt) {
-  var h = '<option value="">Ohne Rubrik</option>';
-  P().rubriken.forEach(function (r) {
-    h += '<option value="' + esc(r.id) + '"' + (r.id === gewaehlt ? " selected" : "") + ">" + esc(r.name) + "</option>";
-  });
-  return h;
-}
 
 function datumText(iso) {
   var d = new Date(iso + "T12:00:00");
@@ -137,11 +136,15 @@ function zeigeFehler(f, text) {
   p.hidden = false;
 }
 
+function dateiFehler() {
+  alert("Die Datei konnte nicht gespeichert werden. Vielleicht ist der Speicher des Geräts voll.");
+}
+
 function aktualisiere() {
   if (!speichereDaten(daten, window.localStorage)) {
     alert("Konnte nicht speichern. Bitte sichere deine Daten über das Symbol oben rechts.");
   }
-  zeichne();
+  zeichne(false);
 }
 
 function setzeAnsicht(name) {
@@ -157,7 +160,7 @@ function projektLeisteHtml() {
   var h = '<nav class="projekte" aria-label="Projekte">';
   daten.projekte.forEach(function (p) {
     var aktiv = p.id === P().id;
-    h += '<button type="button" class="projekt-chip" data-aktion="projekt-wechseln" data-id="' + esc(p.id) + '" aria-pressed="' + aktiv + '">' + esc(p.name) + "</button>";
+    h += '<button type="button" class="projekt-chip" data-aktion="projekt-wechseln" data-lang="projekt" data-id="' + esc(p.id) + '" aria-pressed="' + aktiv + '">' + esc(p.name) + "</button>";
   });
   h += '<button type="button" class="projekt-chip plus" data-aktion="projekt-neu" aria-label="Neues Projekt">' + ICON.plus + "</button>";
   h += '<button type="button" class="projekt-chip plus" data-aktion="projekt-bearbeiten" aria-label="Projekt umbenennen oder löschen">' + ICON.stift + "</button>";
@@ -170,7 +173,7 @@ function projektFormular(p) {
     '<div class="formular-knoepfe">' +
       (p && daten.projekte.length > 1 ? '<button type="button" class="klein gefahr" data-aktion="projekt-loeschen" data-id="' + esc(p.id) + '">Projekt löschen</button>' : "") +
       '<span class="spacer"></span><button type="submit" class="knopf">Speichern</button></div>' +
-    (p ? '<p class="hinweis">Beim Löschen verschwinden alle Doings, Rubriken, Notizen und Meilensteine dieses Projekts.</p>' : "") +
+    (p ? '<p class="hinweis">Beim Löschen verschwinden alle Doings, Notizen, Meilensteine und Dateien dieses Projekts. Tipp: Auch langes Drücken auf den Projektnamen löscht es.</p>' : "") +
     "</form>";
 }
 
@@ -191,18 +194,177 @@ function speichereProjekt(f) {
   aktualisiere();
 }
 
+function projektLoeschenAbfrage(id) {
+  var p = findeProjekt(id);
+  if (!p) return;
+  if (daten.projekte.length < 2) return alert("Das letzte Projekt kann nicht gelöscht werden.");
+  if (confirm("Projekt „" + p.name + "“ mit allen Doings, Notizen, Meilensteinen und Dateien löschen?")) projektLoeschen(id);
+}
+
+function projektLoeschen(id) {
+  var p = findeProjekt(id);
+  if (!p) return;
+  dateienLoeschen(anhangIdsVon(p)).catch(function () {});
+  daten.projekte = daten.projekte.filter(function (x) { return x.id !== id; });
+  ui.aktivesProjekt = "";
+  speichereUi();
+  schliesseSheet();
+  aktualisiere();
+}
+
+/* ---------- Dateien an Doings und Notizen ---------- */
+
+/* Große Fotos werden vor dem Speichern verkleinert und als JPEG abgelegt. Andere Dateien bleiben unverändert. */
+function verkleinereBild(datei) {
+  if (!/^image\/(jpeg|png|webp)$/.test(datei.type)) return Promise.resolve(datei);
+  return new Promise(function (ok) {
+    var adresse = URL.createObjectURL(datei);
+    var bild = new Image();
+    bild.onload = function () {
+      var lang = Math.max(bild.naturalWidth, bild.naturalHeight);
+      if (lang <= BILD_MAX && datei.size <= 1500000) {
+        URL.revokeObjectURL(adresse);
+        return ok(datei);
+      }
+      var f = Math.min(1, BILD_MAX / lang);
+      var c = document.createElement("canvas");
+      c.width = Math.round(bild.naturalWidth * f);
+      c.height = Math.round(bild.naturalHeight * f);
+      var zeichnung = c.getContext("2d");
+      zeichnung.fillStyle = "#fff";
+      zeichnung.fillRect(0, 0, c.width, c.height);
+      zeichnung.drawImage(bild, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(adresse);
+      c.toBlob(function (b) { ok(b || datei); }, "image/jpeg", 0.85);
+    };
+    bild.onerror = function () {
+      URL.revokeObjectURL(adresse);
+      ok(datei);
+    };
+    bild.src = adresse;
+  });
+}
+
+/* Liest die Vorschau-Adressen aus dem Speicher und setzt sie an die Anhänge in wurzel. */
+function ladeAnhaenge(wurzel) {
+  wurzel.querySelectorAll("a[data-anhang-id]").forEach(function (a) {
+    var id = a.getAttribute("data-anhang-id");
+    function fertig(adresse) {
+      a.href = adresse;
+      a.setAttribute("download", a.getAttribute("data-name") || "Datei");
+      var bild = a.querySelector("img");
+      if (bild) bild.src = adresse;
+    }
+    if (vorschauUrls[id]) return fertig(vorschauUrls[id]);
+    dateiHolen(id).then(function (satz) {
+      if (!satz) return;
+      vorschauUrls[id] = URL.createObjectURL(satz.blob);
+      fertig(vorschauUrls[id]);
+    }).catch(function () {});
+  });
+}
+
+/* Anzeige der Anhänge in Doings und Notizen. */
+function anhangHtml(liste) {
+  if (!liste || !liste.length) return "";
+  return '<ul class="anhang-galerie">' + liste.map(function (a) {
+    var bild = /^image\//.test(a.typ);
+    return '<li><a class="anhang' + (bild ? " bild" : "") + '" data-anhang-id="' + esc(a.id) + '" data-name="' + esc(a.name) + '">' +
+      (bild ? '<img class="anhang-bild" alt="' + esc(a.name) + '">' : '<span class="anhang-name">' + esc(a.name) + "</span>") +
+      "</a></li>";
+  }).join("") + "</ul>";
+}
+
+/* Verwaltung der Anhänge im Bearbeiten-Fenster: entfernen und neue hinzufügen. */
+function anhangBereichHtml(art, eintrag) {
+  var liste = eintrag.anhaenge || [];
+  var h = '<div class="anhang-bereich" data-anhang-bereich data-art="' + art + '" data-id="' + esc(eintrag.id) + '">' +
+    '<span class="bereich-titel">Fotos und Dateien</span>';
+  if (liste.length) {
+    h += '<ul class="anhang-verwaltung">' + liste.map(function (a) {
+      return '<li class="anhang-zeile"><span class="anhang-name">' + esc(a.name) + "</span>" +
+        '<button type="button" class="klein gefahr" data-aktion="anhang-loeschen" data-art="' + art + '" data-id="' + esc(eintrag.id) + '" data-anhang="' + esc(a.id) + '">Entfernen</button></li>';
+    }).join("") + "</ul>";
+  }
+  return h + '<label class="knopf knopf-zweit datei-knopf">+ Foto oder Datei<input type="file" multiple class="versteckt" data-datei="direkt" data-art="' + art + '" data-id="' + esc(eintrag.id) + '"></label></div>';
+}
+
+function aktualisiereAnhangBereich(id) {
+  var bereich = document.querySelector('[data-anhang-bereich][data-id="' + id + '"]');
+  var art = bereich ? bereich.getAttribute("data-art") : "";
+  var eintrag = art === "doing" ? findeDoing(id) : findeNotiz(id);
+  if (!bereich || !eintrag) return;
+  bereich.outerHTML = anhangBereichHtml(art, eintrag);
+}
+
+/* Dateien an ein bestehendes Doing oder eine Notiz hängen. Wirkt sofort. */
+function anhangHinzufuegen(art, id, dateiListe) {
+  var eintrag = art === "doing" ? findeDoing(id) : findeNotiz(id);
+  var neu = Array.from(dateiListe);
+  if (!eintrag || !neu.length) return;
+  mitDateien(neu, function (anhaenge) {
+    eintrag.anhaenge = (eintrag.anhaenge || []).concat(anhaenge);
+    aktualisiere();
+    aktualisiereAnhangBereich(id);
+  });
+}
+
+/* Ausgewählte Dateien für das Formular oben (noch nicht gespeichert). */
+function wartendBereichHtml(kontext) {
+  return '<div class="wartend-liste" data-wartend-liste="' + kontext + '">' + wartendHtml(kontext) + "</div>" +
+    '<label class="knopf knopf-zweit datei-knopf">+ Foto oder Datei<input type="file" multiple class="versteckt" data-datei="wartend" data-kontext="' + kontext + '"></label>';
+}
+
+function wartendHtml(kontext) {
+  return wartend[kontext].map(function (d, i) {
+    return '<span class="anhang-chip">' + esc(d.name) +
+      '<button type="button" class="klein" data-aktion="wartend-entfernen" data-kontext="' + kontext + '" data-index="' + i + '" aria-label="Entfernen">✕</button></span>';
+  }).join("");
+}
+
+function aktualisiereWartend(kontext) {
+  var b = document.querySelector('[data-wartend-liste="' + kontext + '"]');
+  if (b) b.innerHTML = wartendHtml(kontext);
+}
+
+function wartendHinzufuegen(kontext, dateiListe) {
+  var neu = Array.from(dateiListe);
+  if (!neu.length) return;
+  Promise.all(neu.map(function (f) {
+    return verkleinereBild(f).then(function (b) { return { name: f.name, blob: b }; });
+  })).then(function (liste) {
+    wartend[kontext] = wartend[kontext].concat(liste);
+    aktualisiereWartend(kontext);
+  }, dateiFehler);
+}
+
+/* Speichert die Dateien und ruft dann auf. Verhindert doppeltes Absenden. */
+function mitDateien(liste, dann) {
+  if (speichertGerade) return;
+  speichertGerade = true;
+  Promise.all(liste.map(function (d) { return dateiSpeichern(d.blob || d, d.name); }))
+    .then(dann, dateiFehler)
+    .then(function () { speichertGerade = false; }, function () { speichertGerade = false; });
+}
+
 /* ---------- Ansicht Doings ---------- */
 
 function doingHtml(d) {
-  return '<li class="doing' + (d.erledigt ? " fertig" : "") + '">' +
+  var offen = !ui.eingeklappt[d.id];
+  return '<li class="doing' + (d.erledigt ? " fertig" : "") + (offen ? "" : " eingeklappt") + '" data-lang="doing" data-id="' + esc(d.id) + '">' +
     '<button type="button" class="haken" data-aktion="doing-haken" data-id="' + esc(d.id) + '" aria-pressed="' + !!d.erledigt + '" aria-label="' +
       (d.erledigt ? "Wieder öffnen: " : "Erledigt: ") + esc(d.text) + '">' + (d.erledigt ? ICON.check : "") + "</button>" +
-    '<button type="button" class="doing-text" data-aktion="doing-bearbeiten" data-id="' + esc(d.id) + '">' +
-      "<span>" + esc(d.text) + "</span>" +
-      (d.faellig ? '<small class="faellig">fällig ' + esc(datumText(d.faellig)) + "</small>" : "") +
-      (d.notiz ? "<small>" + esc(d.notiz) + "</small>" : "") +
-      (d.prompt ? '<em class="marke">Promt</em>' : "") +
-    "</button></li>";
+    '<div class="doing-mitte">' +
+      '<button type="button" class="doing-text" data-aktion="doing-bearbeiten" data-id="' + esc(d.id) + '">' +
+        "<span>" + esc(d.text) + "</span>" +
+        (d.faellig ? '<small class="faellig">fällig ' + esc(datumText(d.faellig)) + "</small>" : "") +
+        (offen && d.notiz ? "<small>" + esc(d.notiz) + "</small>" : "") +
+        (offen && d.prompt ? '<em class="marke">Promt</em>' : "") +
+      "</button>" +
+      (offen ? anhangHtml(d.anhaenge) : "") +
+    "</div>" +
+    '<button type="button" class="falt" data-aktion="falten" data-id="' + esc(d.id) + '" aria-expanded="' + offen + '" aria-label="' + (offen ? "Einklappen" : "Ausklappen") + '">' + ICON.chev + "</button>" +
+  "</li>";
 }
 
 function doingsHtml() {
@@ -221,37 +383,15 @@ function doingsHtml() {
       '<button type="button" class="knopf knopf-zweit" data-aktion="promt-liste-auf" data-label>Promt</button>' +
       '<button type="submit" class="knopf">+ Hinzufügen</button>' +
     "</div>" +
-    '<div class="promt-auswahl" hidden>' + promtAuswahlHtml("prompt") + "</div></form>";
+    '<div class="promt-auswahl" hidden>' + promtAuswahlHtml("prompt") + "</div>" +
+    wartendBereichHtml("doing") + "</form>";
   h += '<div class="werkzeug">' +
-    '<button type="button" class="chip" data-aktion="nur-offene" aria-pressed="' + ui.nurOffene + '">Erledigte ausblenden</button>' +
-    '<button type="button" class="chip" data-aktion="rubrik-neu">+ Rubrik</button></div>';
+    '<button type="button" class="chip" data-aktion="nur-offene" aria-pressed="' + ui.nurOffene + '">Erledigte ausblenden</button></div>';
 
-  var gruppen = pr.rubriken.map(function (r) { return { id: r.id, name: r.name }; });
-  gruppen.push({ id: null, name: "Ohne Rubrik" });
-
-  gruppen.forEach(function (g) {
-    var alle = pr.doings.filter(function (d) { return (d.rubrikId || null) === g.id; });
-    if (g.id === null && alle.length === 0) return;
-    var schluessel = g.id || "_ohne";
-    var dicht = !!ui.rubrikDicht[schluessel];
-    var offenG = alle.filter(function (d) { return !d.erledigt; }).length;
-    var sichtbar = alle.filter(function (d) { return !(ui.nurOffene && d.erledigt); });
-
-    h += '<div class="rubrik"><div class="rubrik-kopf">' +
-      '<button type="button" class="rubrik-auf" data-aktion="rubrik-dicht" data-id="' + esc(schluessel) + '" aria-expanded="' + !dicht + '">' +
-        ICON.chev + "<span>" + esc(g.name) + "</span>" +
-        '<span class="zaehl">' + offenG + "/" + alle.length + "</span></button>" +
-      (g.id ? '<button type="button" class="klein" data-aktion="rubrik-bearbeiten" data-id="' + esc(g.id) + '">Bearbeiten</button>' : "") +
-      "</div>";
-    if (!dicht) {
-      if (!sichtbar.length) {
-        h += '<p class="leer">' + (alle.length ? "Alles erledigt." : "Noch nichts in dieser Rubrik.") + "</p>";
-      } else {
-        h += '<ul class="doings">' + sichtbar.map(doingHtml).join("") + "</ul>";
-      }
-    }
-    h += "</div>";
-  });
+  var liste = pr.doings.filter(function (d) { return !(ui.nurOffene && d.erledigt); });
+  if (!pr.doings.length) h += '<p class="leer">Noch nichts zu tun. Neues Doing oben eintragen.</p>';
+  else if (!liste.length) h += '<p class="leer">Alles erledigt.</p>';
+  else h += '<ul class="doings">' + liste.map(doingHtml).join("") + "</ul>";
 
   return h + "</div></section>";
 }
@@ -259,12 +399,12 @@ function doingsHtml() {
 function doingFormular(d) {
   return '<form class="formular" data-form="doing-speichern" data-id="' + esc(d.id) + '">' +
     '<label>Doing<input name="text" maxlength="200" required value="' + esc(d.text) + '"></label>' +
-    '<label>Rubrik<select name="rubrik">' + rubrikOptionen(d.rubrikId || "") + "</select></label>" +
     '<label>Fällig am<input name="faellig" type="date" value="' + esc(d.faellig) + '"></label>' +
     '<label>Notiz<textarea name="notiz" rows="2" maxlength="500">' + esc(d.notiz) + "</textarea></label>" +
     '<label>Promt (zum Kopieren)<textarea name="prompt" rows="5" maxlength="4000">' + esc(d.prompt) + "</textarea></label>" +
     '<button type="button" class="klein" data-aktion="promt-liste-auf">Promt einfügen</button>' +
     '<div class="promt-auswahl" hidden>' + promtAuswahlHtml("prompt") + "</div>" +
+    anhangBereichHtml("doing", d) +
     '<div class="formular-knoepfe">' +
       '<button type="button" class="knopf knopf-zweit" data-aktion="text-kopieren" data-feld="prompt">Promt kopieren</button>' +
       '<button type="button" class="klein gefahr" data-aktion="doing-loeschen" data-id="' + esc(d.id) + '">Löschen</button>' +
@@ -280,24 +420,19 @@ function promtAuswahlHtml(feldName) {
   }).join("");
 }
 
-function rubrikFormular(r) {
-  var h = '<form class="formular" data-form="rubrik-speichern"' + (r ? ' data-id="' + esc(r.id) + '"' : "") + ">" +
-    '<label>Name der Rubrik<input name="titel" maxlength="40" required value="' + esc(r ? r.name : "") + '" placeholder="z. B. Musik, Ideen, Termine"></label>' +
-    '<div class="formular-knoepfe">';
-  if (r) h += '<button type="button" class="klein gefahr" data-aktion="rubrik-loeschen" data-id="' + esc(r.id) + '">Rubrik löschen</button>';
-  h += '<span class="spacer"></span><button type="submit" class="knopf">Speichern</button></div>';
-  if (r) h += '<p class="hinweis">Beim Löschen bleiben Doings und Notizen erhalten und landen in „Ohne Rubrik“.</p>';
-  return h + "</form>";
-}
-
 function speichereNeuesDoing(f) {
   var text = feld(f, "text").trim();
   if (!text) return;
-  var jetzt = Date.now();
-  P().doings.push({ id: neueId(), rubrikId: null, text: text, notiz: "", prompt: feld(f, "prompt").trim(), faellig: feld(f, "faellig"), erledigt: false, erstellt: jetzt, ordnung: jetzt });
-  aktualisiere();
-  var eingabe = document.querySelector('[data-form="doing-neu"] input[name="text"]');
-  if (eingabe) eingabe.focus();
+  var prompt = feld(f, "prompt").trim();
+  var faellig = gueltigesDatum(feld(f, "faellig")) ? feld(f, "faellig") : "";
+  mitDateien(wartend.doing.slice(), function (anhaenge) {
+    wartend.doing = [];
+    var jetzt = Date.now();
+    P().doings.push({ id: neueId(), text: text, notiz: "", prompt: prompt, faellig: faellig, anhaenge: anhaenge, erledigt: false, erstellt: jetzt, ordnung: jetzt });
+    aktualisiere();
+    var eingabe = document.querySelector('[data-form="doing-neu"] input[name="text"]');
+    if (eingabe) eingabe.focus();
+  });
 }
 
 function speichereDoing(f) {
@@ -308,17 +443,6 @@ function speichereDoing(f) {
   d.notiz = feld(f, "notiz").trim();
   d.prompt = feld(f, "prompt").trim();
   d.faellig = gueltigesDatum(feld(f, "faellig")) ? feld(f, "faellig") : "";
-  d.rubrikId = feld(f, "rubrik") || null;
-  schliesseSheet();
-  aktualisiere();
-}
-
-function speichereRubrik(f) {
-  var name = feld(f, "titel").trim();
-  if (!name) return;
-  var r = f.getAttribute("data-id") ? findeRubrik(f.getAttribute("data-id")) : null;
-  if (r) r.name = name;
-  else P().rubriken.push({ id: neueId(), name: name });
   schliesseSheet();
   aktualisiere();
 }
@@ -379,10 +503,10 @@ function zeitSeiteHtml() {
 }
 
 function zeitEintragHtml(e, generisch) {
-  var art = e.typ === "doing" ? "Doing" : e.typ === "meilenstein" ? "Meilenstein" : "Notiz";
-  var text = e.typ === "notiz" ? (e.obj.text || e.obj.link) : e.typ === "doing" ? e.obj.text : e.obj.titel;
-  var klasse = "ze " + (e.typ === "doing" ? "doing-ze" : e.typ === "meilenstein" ? "meilenstein-ze" : "notiz-ze") + (e.obj.erledigt ? " fertig" : "");
-  var knopf = e.typ === "doing" ? "doing-bearbeiten" : e.typ === "meilenstein" ? "meilenstein-bearbeiten" : "notiz-bearbeiten";
+  var art = e.typ === "doing" ? "Doing" : "Meilenstein";
+  var text = e.typ === "doing" ? e.obj.text : e.obj.titel;
+  var klasse = "ze " + (e.typ === "doing" ? "doing-ze" : "meilenstein-ze") + (e.obj.erledigt ? " fertig" : "");
+  var knopf = e.typ === "doing" ? "doing-bearbeiten" : "meilenstein-bearbeiten";
   var h = '<li class="' + klasse + '"><button type="button" class="ze-knopf" data-aktion="' + knopf + '" data-id="' + esc(e.obj.id) + '">' +
     '<span class="ze-art">' + art + "</span><span>" + esc(text) + "</span></button>";
   if (generisch) {
@@ -401,7 +525,7 @@ function speichereZeitNeu(typ, f) {
   if (typ === "meilenstein" && P().zeitModus === "datum" && !datum) return zeigeFehler(f, "Im Datumsmodus braucht der Meilenstein ein Datum.");
   var jetzt = Date.now();
   if (typ === "doing") {
-    P().doings.push({ id: neueId(), rubrikId: null, text: titel, notiz: "", prompt: "", faellig: datum, erledigt: false, erstellt: jetzt, ordnung: jetzt });
+    P().doings.push({ id: neueId(), text: titel, notiz: "", prompt: "", faellig: datum, anhaenge: [], erledigt: false, erstellt: jetzt, ordnung: jetzt });
   } else {
     P().meilensteine.push({ id: neueId(), titel: titel, datum: datum, erstellt: jetzt, ordnung: jetzt });
   }
@@ -435,56 +559,51 @@ function speichereMeilenstein(f) {
 
 /* ---------- Ansicht Notizen (Denkbrett) ---------- */
 
-function chipHtml(wert, label, aktuell) {
-  return '<button type="button" class="chip" data-aktion="notiz-filter" data-wert="' + esc(wert) + '" aria-pressed="' + (wert === aktuell) + '">' + esc(label) + "</button>";
-}
-
 function notizenSeiteHtml() {
   var pr = P();
-  var f = ui.notizFilter;
-  if (f !== "alle" && f !== "ohne" && !findeRubrik(f)) f = "alle";
+  var h = '<section class="karte notiz-eingabe">' +
+    '<button type="button" class="abschnitt-kopf" data-aktion="notiz-form-auf" aria-expanded="' + ui.notizFormOffen + '" aria-controls="notiz-form-body">' +
+      '<span class="kopf-text"><h2>Neue Notiz</h2><small>Text, Link oder Foto</small></span>' + ICON.chev + "</button>" +
+    '<div class="abschnitt-body" id="notiz-form-body"' + (ui.notizFormOffen ? "" : " hidden") + ">" +
+    '<form class="notiz-form" data-form="notiz-neu" autocomplete="off">' +
+      '<textarea name="text" rows="3" maxlength="2000" placeholder="Gedanke, Liedtitel, Idee …" aria-label="Notiz"></textarea>' +
+      '<input name="link" type="text" maxlength="500" inputmode="url" placeholder="Link (Spotify, YouTube …), optional" aria-label="Link">' +
+      wartendBereichHtml("notiz") +
+      '<p class="fehler" data-fehler hidden></p>' +
+      '<div class="formular-knoepfe"><span class="spacer"></span><button type="submit" class="knopf">Speichern</button></div>' +
+    "</form></div></section>";
 
-  var h = '<section class="karte notiz-karte-gross"><form class="notiz-form" data-form="notiz-neu" autocomplete="off">' +
-    '<textarea name="text" rows="3" maxlength="2000" placeholder="Gedanke, Liedtitel, Idee …" aria-label="Notiz"></textarea>' +
-    '<input name="link" type="text" maxlength="500" inputmode="url" placeholder="Link (Spotify, YouTube …), optional" aria-label="Link">' +
-    '<div class="schnell-zeile"><select name="rubrik" aria-label="Rubrik">' + rubrikOptionen(ui.letzteNotizRubrik) + "</select>" +
-    '<button type="submit" class="knopf">Speichern</button></div>' +
-    '<p class="fehler" data-fehler hidden></p></form></section>';
-
-  h += '<div class="chips" role="group" aria-label="Filter">' + chipHtml("alle", "Alle", f) + chipHtml("ohne", "Ohne Rubrik", f);
-  pr.rubriken.forEach(function (r) { h += chipHtml(r.id, r.name, f); });
-  h += "</div>";
-
-  var liste = pr.notizen.filter(function (n) {
-    if (f === "alle") return true;
-    if (f === "ohne") return !n.rubrikId;
-    return n.rubrikId === f;
-  });
-  if (!liste.length) return h + '<p class="leer">Noch keine Notizen. Gedanken, Lieder und Links landen hier.</p>';
-
-  return h + '<ul class="notiz-liste">' + liste.map(notizKarte).join("") + "</ul>";
+  if (!pr.notizen.length) return h + '<p class="leer">Noch keine Notizen. Gedanken, Lieder, Links und Fotos landen hier.</p>';
+  return h + '<ul class="notiz-liste">' + pr.notizen.map(notizKarte).join("") + "</ul>";
 }
 
 function notizKarte(n) {
-  var h = '<li class="notiz-karte">';
-  if (n.text) h += "<p>" + esc(n.text) + "</p>";
-  h += '<div class="notiz-fuss">';
-  if (n.link) {
-    var art = linkArt(n.link);
-    h += '<a class="linkmarke ' + art.toLowerCase() + '" href="' + esc(n.link) + '" target="_blank" rel="noopener noreferrer" title="' + esc(n.link) + '">' + esc(art) + " ↗</a>";
+  var offen = !ui.eingeklappt[n.id];
+  var kurz = n.text || n.link || (n.anhaenge && n.anhaenge.length ? n.anhaenge[0].name : "Notiz");
+  var h = '<li class="notiz-karte' + (offen ? "" : " eingeklappt") + '" data-lang="notiz" data-id="' + esc(n.id) + '">' +
+    '<div class="karte-kopf"><div class="karte-text">' +
+      (offen ? (n.text ? "<p>" + esc(n.text) + "</p>" : "") : '<p class="kurz">' + esc(kurz) + "</p>") +
+    "</div>" +
+    '<button type="button" class="falt" data-aktion="falten" data-id="' + esc(n.id) + '" aria-expanded="' + offen + '" aria-label="' + (offen ? "Einklappen" : "Ausklappen") + '">' + ICON.chev + "</button></div>";
+  if (offen) {
+    h += anhangHtml(n.anhaenge);
+    h += '<div class="notiz-fuss">';
+    if (n.link) {
+      var art = linkArt(n.link);
+      h += '<a class="linkmarke ' + art.toLowerCase() + '" href="' + esc(n.link) + '" target="_blank" rel="noopener noreferrer" title="' + esc(n.link) + '">' + esc(art) + " ↗</a>";
+    }
+    h += '<span class="spacer"></span>' +
+      '<button type="button" class="klein" data-aktion="notiz-bearbeiten" data-id="' + esc(n.id) + '">Bearbeiten</button>' +
+      "</div>";
   }
-  if (n.rubrikId && findeRubrik(n.rubrikId)) h += '<span class="marke">' + esc(rubrikName(P(), n.rubrikId)) + "</span>";
-  h += '<span class="spacer"></span>' +
-    '<button type="button" class="klein" data-aktion="notiz-bearbeiten" data-id="' + esc(n.id) + '">Bearbeiten</button>' +
-    "</div></li>";
-  return h;
+  return h + "</li>";
 }
 
 function notizFormular(n) {
   return '<form class="formular" data-form="notiz-speichern" data-id="' + esc(n.id) + '">' +
     '<label>Notiz<textarea name="text" rows="4" maxlength="2000">' + esc(n.text) + "</textarea></label>" +
     '<label>Link<input name="link" type="text" maxlength="500" inputmode="url" value="' + esc(n.link) + '"></label>' +
-    '<label>Rubrik<select name="rubrik">' + rubrikOptionen(n.rubrikId || "") + "</select></label>" +
+    anhangBereichHtml("notiz", n) +
     '<p class="fehler" data-fehler hidden></p>' +
     '<div class="formular-knoepfe">' +
       '<button type="button" class="klein gefahr" data-aktion="notiz-loeschen" data-id="' + esc(n.id) + '">Löschen</button>' +
@@ -492,27 +611,76 @@ function notizFormular(n) {
     "</div></form>";
 }
 
-function speichereNotiz(f) {
+/* Neue Notiz aus dem Formular oben (auch nur mit Foto möglich). */
+function speichereNeueNotiz(f) {
   var text = feld(f, "text").trim();
   var eingabe = feld(f, "link").trim();
   var link = sichererLink(eingabe);
   if (eingabe && !link) return zeigeFehler(f, "Das ist kein gültiger Link.");
-  if (!text && !link) return zeigeFehler(f, "Bitte Text oder einen Link eingeben.");
-
-  var rubrik = feld(f, "rubrik");
-  var n = f.getAttribute("data-id") ? findeNotiz(f.getAttribute("data-id")) : null;
-  if (n) {
-    n.text = text;
-    n.link = link;
-    n.rubrikId = rubrik || null;
-    schliesseSheet();
-  } else {
-    ui.letzteNotizRubrik = rubrik;
-    speichereUi();
+  var dateien = wartend.notiz.slice();
+  if (!text && !link && !dateien.length) return zeigeFehler(f, "Bitte Text, einen Link oder eine Datei angeben.");
+  mitDateien(dateien, function (anhaenge) {
+    wartend.notiz = [];
     var jetzt = Date.now();
-    P().notizen.unshift({ id: neueId(), text: text, link: link, rubrikId: rubrik || null, erstellt: jetzt, ordnung: jetzt });
-  }
+    P().notizen.unshift({ id: neueId(), text: text, link: link, anhaenge: anhaenge, erstellt: jetzt, ordnung: jetzt });
+    aktualisiere();
+  });
+}
+
+function speichereNotiz(f) {
+  var n = findeNotiz(f.getAttribute("data-id"));
+  if (!n) return;
+  var text = feld(f, "text").trim();
+  var eingabe = feld(f, "link").trim();
+  var link = sichererLink(eingabe);
+  if (eingabe && !link) return zeigeFehler(f, "Das ist kein gültiger Link.");
+  if (!text && !link && !n.anhaenge.length) return zeigeFehler(f, "Bitte Text, einen Link oder eine Datei angeben.");
+  n.text = text;
+  n.link = link;
+  schliesseSheet();
   aktualisiere();
+}
+
+/* ---------- Langdruck-Menü und Teilen ---------- */
+
+/* Langdruck auf einen Eintrag: Bearbeiten, Teilen, Löschen. */
+function oeffneAktionen(art, id) {
+  var eintrag = art === "doing" ? findeDoing(id) : findeNotiz(id);
+  if (!eintrag) return;
+  var titel = (eintrag.text || eintrag.link || "Eintrag").slice(0, 60);
+  oeffneSheet(titel,
+    '<div class="aktion-liste">' +
+      '<button type="button" data-aktion="' + art + '-bearbeiten" data-id="' + esc(id) + '">' + ICON.stift + "Bearbeiten</button>" +
+      '<button type="button" data-aktion="teilen" data-art="' + art + '" data-id="' + esc(id) + '">' + ICON.teilen + "Teilen</button>" +
+      '<button type="button" class="gefahr" data-aktion="' + art + '-loeschen" data-id="' + esc(id) + '">' + ICON.muell + "Löschen</button>" +
+    "</div>",
+    "aktion");
+}
+
+/* Teilt Text und Dateien über das System. Ohne Teilen-Funktion wird der Text kopiert. */
+function teileEintrag(art, id, knopf) {
+  var eintrag = art === "doing" ? findeDoing(id) : findeNotiz(id);
+  if (!eintrag) return;
+  var zeilen = art === "doing"
+    ? [eintrag.text, eintrag.faellig ? "fällig " + datumText(eintrag.faellig) : "", eintrag.notiz, eintrag.prompt]
+    : [eintrag.text, eintrag.link];
+  var text = zeilen.filter(Boolean).join("\n\n");
+  schliesseSheet();
+  Promise.all((eintrag.anhaenge || []).map(function (a) {
+    return dateiHolen(a.id).then(function (satz) {
+      return satz ? new File([satz.blob], a.name, { type: a.typ }) : null;
+    });
+  })).then(function (dateien) {
+    dateien = dateien.filter(Boolean);
+    if (!navigator.share) return kopiere(text, knopf);
+    var sende = { title: "Stick to the plan", text: text };
+    if (dateien.length && navigator.canShare && navigator.canShare({ files: dateien })) sende.files = dateien;
+    return navigator.share(sende).catch(function (fehler) {
+      if (!fehler || fehler.name !== "AbortError") kopiere(text, knopf);
+    });
+  }).catch(function () {
+    alert("Teilen hat nicht geklappt.");
+  });
 }
 
 /* ---------- Sichern ---------- */
@@ -553,7 +721,7 @@ function appAdresse() {
 }
 
 function sicherungHtml() {
-  return '<p class="hinweis">Deine Daten liegen nur auf diesem Gerät. Sichere sie ab und zu als Datei, bevor du den Browser-Speicher leerst.</p>' +
+  return '<p class="hinweis">Deine Daten liegen nur auf diesem Gerät. Sichere sie ab und zu als Datei, bevor du den Browser-Speicher leerst. Die Sicherung enthält auch Fotos und Dateien und kann daher groß werden.</p>' +
     '<div class="formular-knoepfe"><button type="button" class="knopf" data-aktion="exportieren">Datei sichern</button>' +
     '<label class="knopf knopf-zweit">Datei laden<input type="file" accept="application/json,.json" class="versteckt" data-datei="importieren"></label></div>' +
     '<p class="fehler" data-fehler hidden></p>' +
@@ -565,24 +733,48 @@ function sicherungHtml() {
     '</div>';
 }
 
+function blobZuDatenUrl(blob) {
+  return new Promise(function (ok, nein) {
+    var leser = new FileReader();
+    leser.onload = function () { ok(leser.result); };
+    leser.onerror = function () { nein(leser.error); };
+    leser.readAsDataURL(blob);
+  });
+}
+
+/* Die Sicherung enthält die Daten und alle Dateien (als Datenadresse). */
 function exportiere() {
-  var blob = new Blob([JSON.stringify(daten, null, 2)], { type: "application/json" });
-  var url = URL.createObjectURL(blob);
-  var a = document.createElement("a");
-  a.href = url;
-  a.download = "stick-to-the-plan-" + new Date().toISOString().slice(0, 10) + ".json";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  Promise.all(alleAnhangIds(daten).map(function (aid) {
+    return dateiHolen(aid).then(function (satz) {
+      if (!satz) return null;
+      return blobZuDatenUrl(satz.blob).then(function (url) {
+        return { id: satz.id, name: satz.name, typ: satz.typ, groesse: satz.groesse, daten: url };
+      });
+    });
+  })).then(function (dateien) {
+    var sicherung = { fassung: daten.fassung, projekte: daten.projekte, dateien: dateien.filter(Boolean) };
+    var blob = new Blob([JSON.stringify(sicherung)], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "stick-to-the-plan-" + new Date().toISOString().slice(0, 10) + ".json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }).catch(function () {
+    alert("Die Sicherung konnte nicht erstellt werden.");
+  });
 }
 
 function importiere(datei) {
   var leser = new FileReader();
   leser.onload = function () {
+    var roh = null;
     var neu = null;
     try {
-      neu = saeubereDaten(JSON.parse(leser.result));
+      roh = JSON.parse(leser.result);
+      neu = saeubereDaten(roh);
     } catch (e) {
       neu = null;
     }
@@ -591,14 +783,51 @@ function importiere(datei) {
       if (p) { p.textContent = "Diese Datei passt nicht zu Stick to the plan."; p.hidden = false; }
       return;
     }
-    if (!confirm("Alle aktuellen Projekte durch den Inhalt dieser Datei ersetzen?")) return;
-    daten = neu;
-    ui.aktivesProjekt = "";
-    speichereUi();
-    schliesseSheet();
-    aktualisiere();
+    if (!confirm("Alle aktuellen Projekte und Dateien durch den Inhalt dieser Datei ersetzen?")) return;
+
+    var roheDateien = Array.isArray(roh.dateien) ? roh.dateien : [];
+    Promise.all(roheDateien.filter(function (d) {
+      return d && typeof d.id === "string" && typeof d.daten === "string";
+    }).map(function (d) {
+      return fetch(d.daten).then(function (antwort) { return antwort.blob(); }).then(function (blob) {
+        return { id: d.id, name: String(d.name || "Datei"), typ: String(d.typ || blob.type), groesse: blob.size, blob: blob };
+      });
+    })).then(dateienErsetzen).then(function () {
+      daten = neu;
+      ui.aktivesProjekt = "";
+      speichereUi();
+      schliesseSheet();
+      aktualisiere();
+    }, function () {
+      alert("Die Dateien aus der Sicherung konnten nicht übernommen werden. Bisherige Daten bleiben erhalten.");
+    });
   };
   leser.readAsText(datei);
+}
+
+/* Fotos und Texte, die aus anderen Apps geteilt wurden, werden zu neuen Notizen (siehe sw.js). */
+function uebernehmeGeteilte() {
+  var suche = location.search;
+  if (!/[?&]geteilt=/.test(suche)) return;
+  history.replaceState(null, "", location.pathname);
+  if (/geteilt=fehler/.test(suche)) alert("Das Geteilte konnte nicht gespeichert werden.");
+  geteilteHolen().then(function (liste) {
+    var uebernommen = 0;
+    liste.forEach(function (t) {
+      var text = [t.titel, t.text].filter(Boolean).join("\n");
+      if (!text && !t.link && !(t.anhaenge && t.anhaenge.length)) return;
+      var jetzt = Date.now();
+      P().notizen.unshift({ id: neueId(), text: text, link: t.link || "", anhaenge: t.anhaenge || [], erstellt: jetzt, ordnung: jetzt });
+      uebernommen++;
+    });
+    ui.ansicht = "notizen";
+    speichereUi();
+    return geteilteLoeschen(liste.map(function (t) { return t.id; })).then(function () {
+      if (uebernommen) aktualisiere();
+    });
+  }).catch(function () {
+    alert("Das Geteilte konnte nicht übernommen werden.");
+  });
 }
 
 /* ---------- Fenster (Sheets) ---------- */
@@ -613,6 +842,7 @@ function oeffneSheet(titel, inhalt, art) {
   s.hidden = false;
   offenerSheet = art;
   document.body.style.overflow = "hidden";
+  ladeAnhaenge(s);
 }
 
 function schliesseSheet() {
@@ -625,13 +855,33 @@ function schliesseSheet() {
 
 /* ---------- Zeichnen ---------- */
 
-function zeichne() {
+/* Gerade getippte Texte in den Formularen bleiben beim Neuzeichnen erhalten (z. B. beim Einklappen). */
+function merkeEingaben() {
+  var werte = [];
+  document.querySelectorAll("#app [data-form] [name]").forEach(function (el) {
+    if (el.type === "hidden" || el.type === "file") return;
+    werte.push({ form: el.closest("[data-form]").getAttribute("data-form"), name: el.name, wert: el.value });
+  });
+  return werte;
+}
+
+function stelleEingabenHer(werte) {
+  werte.forEach(function (w) {
+    var el = document.querySelector('#app [data-form="' + w.form + '"] [name="' + w.name + '"]');
+    if (el && w.wert) el.value = w.wert;
+  });
+}
+
+function zeichne(eingabenMerken) {
   var ans = ui.ansicht;
+  var merk = eingabenMerken === false ? null : merkeEingaben();
   document.getElementById("projekte-leiste").innerHTML = projektLeisteHtml();
   document.getElementById("kopf-titel").textContent = ANSICHT_TITEL[ans][0];
   document.getElementById("kopf-unter").textContent = ANSICHT_TITEL[ans][1];
   document.getElementById("btn-zurueck").hidden = ans === "notizen";
   document.getElementById("app").innerHTML = ans === "doings" ? doingsHtml() : ans === "notizen" ? notizenSeiteHtml() : zeitSeiteHtml();
+  if (merk) stelleEingabenHer(merk);
+  ladeAnhaenge(document.getElementById("app"));
   document.querySelectorAll('[data-aktion="ansicht"]').forEach(function (b) {
     var aktiv = b.getAttribute("data-wert") === ans;
     b.classList.toggle("aktiv", aktiv);
@@ -641,9 +891,6 @@ function zeichne() {
 }
 
 /* ---------- Wischen und Langdruck ---------- */
-
-var wisch = null;
-var langdruck = null;
 
 document.addEventListener("touchstart", function (e) {
   if (e.touches.length !== 1 || offenerSheet) { wisch = null; return; }
@@ -667,29 +914,54 @@ document.addEventListener("touchend", function (e) {
   if (j >= 0 && j < ANSICHTEN.length) setzeAnsicht(ANSICHTEN[j]);
 }, { passive: true });
 
-/* Langdruck auf den Strahl der Zeitleiste (nicht auf Einträge und Knöpfe) */
+/* Langdruck: auf den Strahl der Zeitleiste (Zieldatum), auf Doings und Notizen (Menü), auf Projekte (löschen).
+   Eingaben, Häkchen, Klappknöpfe und Anhänge reagieren nicht darauf. */
 document.addEventListener("pointerdown", function (e) {
-  if (ui.ansicht !== "zeit" || e.target.closest("button, input, select")) return;
-  if (!e.target.closest("[data-langdruck]")) return;
+  var t = e.target;
+  if (t.closest("input, textarea, select, .haken, .falt, .anhang")) return;
+  var ausfuehren = null;
+  if (ui.ansicht === "zeit" && t.closest("[data-langdruck]") && !t.closest("button")) {
+    ausfuehren = function () { oeffneSheet("Zieldatum", zielDatumHtml(), "formular"); };
+  } else {
+    var el = t.closest("[data-lang]");
+    if (!el) return;
+    var art = el.getAttribute("data-lang");
+    var id = el.getAttribute("data-id");
+    ausfuehren = function () {
+      if (art === "projekt") projektLoeschenAbfrage(id);
+      else oeffneAktionen(art, id);
+    };
+  }
   clearTimeout(langdruck);
   langdruck = setTimeout(function () {
     langdruck = null;
     langdruckAusgeloest = true;
     if (navigator.vibrate) navigator.vibrate(20);
-    oeffneSheet("Zieldatum", zielDatumHtml(), "formular");
+    ausfuehren();
   }, LANGDRUCK_MS);
 });
 
-["pointerup", "pointercancel", "pointerleave"].forEach(function (ereignis) {
+["pointerup", "pointercancel"].forEach(function (ereignis) {
   document.addEventListener(ereignis, function () {
     clearTimeout(langdruck);
     langdruck = null;
+    if (langdruckAusgeloest) setTimeout(function () { langdruckAusgeloest = false; }, 350);
   });
+});
+
+/* Auf dem Handy öffnet langes Drücken sonst das Kontextmenü des Systems. */
+document.addEventListener("contextmenu", function (e) {
+  if (e.target.closest && e.target.closest("[data-lang], [data-langdruck]")) e.preventDefault();
 });
 
 /* ---------- Klicks, Absenden, Dateiwahl, Tastatur ---------- */
 
 document.addEventListener("click", function (e) {
+  /* Der Tipp, der auf einen Langdruck folgt, öffnet nichts. */
+  if (langdruckAusgeloest) {
+    e.preventDefault();
+    return;
+  }
   var el = e.target.closest("[data-aktion]");
   if (!el) return;
   var id = el.getAttribute("data-id");
@@ -734,19 +1006,9 @@ document.addEventListener("click", function (e) {
       oeffneSheet("Projekt bearbeiten", projektFormular(P()), "formular");
       break;
     case "projekt-loeschen":
-      if (confirm("Projekt mit allen Doings, Rubriken, Notizen und Meilensteinen löschen?")) {
-        daten.projekte = daten.projekte.filter(function (p) { return p.id !== id; });
-        ui.aktivesProjekt = "";
-        speichereUi();
-        schliesseSheet();
-        aktualisiere();
-      }
+      projektLoeschenAbfrage(id);
       break;
     case "zeit-form":
-      if (langdruckAusgeloest) {
-        langdruckAusgeloest = false;
-        break;
-      }
       zeitFormOffen = !zeitFormOffen;
       zeichne();
       break;
@@ -775,7 +1037,7 @@ document.addEventListener("click", function (e) {
       }
       break;
     case "promt-liste-auf": {
-      var auswahl = el.parentElement.querySelector(".promt-auswahl");
+      var auswahl = el.closest("form").querySelector(".promt-auswahl");
       if (auswahl) auswahl.hidden = !auswahl.hidden;
       break;
     }
@@ -802,23 +1064,15 @@ document.addEventListener("click", function (e) {
       speichereUi();
       zeichne();
       break;
-    case "rubrik-dicht":
-      ui.rubrikDicht[id] = !ui.rubrikDicht[id];
+    case "notiz-form-auf":
+      ui.notizFormOffen = !ui.notizFormOffen;
       speichereUi();
       zeichne();
       break;
-    case "rubrik-neu":
-      oeffneSheet("Neue Rubrik", rubrikFormular(null), "formular");
-      break;
-    case "rubrik-bearbeiten":
-      oeffneSheet("Rubrik bearbeiten", rubrikFormular(findeRubrik(id)), "formular");
-      break;
-    case "rubrik-loeschen":
-      if (confirm("Rubrik löschen? Doings und Notizen bleiben erhalten.")) {
-        rubrikLoeschen(P(), id);
-        schliesseSheet();
-        aktualisiere();
-      }
+    case "falten":
+      ui.eingeklappt[id] = !ui.eingeklappt[id];
+      speichereUi();
+      zeichne();
       break;
     case "doing-haken": {
       var d = findeDoing(id);
@@ -833,6 +1087,8 @@ document.addEventListener("click", function (e) {
       break;
     case "doing-loeschen":
       if (confirm("Dieses Doing löschen?")) {
+        var geloescht = findeDoing(id);
+        if (geloescht) dateienLoeschen(anhangIds(geloescht)).catch(function () {});
         P().doings = P().doings.filter(function (x) { return x.id !== id; });
         schliesseSheet();
         aktualisiere();
@@ -841,11 +1097,6 @@ document.addEventListener("click", function (e) {
     case "text-kopieren":
       kopiere(feld(el.closest("form"), el.getAttribute("data-feld")), el);
       break;
-    case "notiz-filter":
-      ui.notizFilter = el.getAttribute("data-wert");
-      speichereUi();
-      zeichne();
-      break;
     case "notiz-bearbeiten": {
       var n = findeNotiz(id);
       if (n) oeffneSheet("Notiz bearbeiten", notizFormular(n), "formular");
@@ -853,11 +1104,34 @@ document.addEventListener("click", function (e) {
     }
     case "notiz-loeschen":
       if (confirm("Diese Notiz löschen?")) {
+        var entfernt = findeNotiz(id);
+        if (entfernt) dateienLoeschen(anhangIds(entfernt)).catch(function () {});
         P().notizen = P().notizen.filter(function (x) { return x.id !== id; });
         schliesseSheet();
         aktualisiere();
       }
       break;
+    case "teilen":
+      teileEintrag(el.getAttribute("data-art"), id, el);
+      break;
+    case "wartend-entfernen": {
+      var kontext = el.getAttribute("data-kontext");
+      wartend[kontext].splice(Number(el.getAttribute("data-index")), 1);
+      aktualisiereWartend(kontext);
+      break;
+    }
+    case "anhang-loeschen": {
+      var art = el.getAttribute("data-art");
+      var eintrag = art === "doing" ? findeDoing(id) : findeNotiz(id);
+      var aid = el.getAttribute("data-anhang");
+      if (eintrag && confirm("Diese Datei entfernen?")) {
+        eintrag.anhaenge = eintrag.anhaenge.filter(function (a) { return a.id !== aid; });
+        dateienLoeschen([aid]).catch(function () {});
+        aktualisiere();
+        aktualisiereAnhangBereich(id);
+      }
+      break;
+    }
     case "sheet-zu":
       schliesseSheet();
       break;
@@ -871,17 +1145,25 @@ document.addEventListener("submit", function (e) {
   e.preventDefault();
   if (art === "doing-neu") speichereNeuesDoing(f);
   else if (art === "doing-speichern") speichereDoing(f);
-  else if (art === "rubrik-speichern") speichereRubrik(f);
   else if (art === "projekt-speichern") speichereProjekt(f);
   else if (art === "meilenstein-speichern") speichereMeilenstein(f);
-  else if (art === "notiz-neu" || art === "notiz-speichern") speichereNotiz(f);
+  else if (art === "notiz-neu") speichereNeueNotiz(f);
+  else if (art === "notiz-speichern") speichereNotiz(f);
   else if (art === "zeit-ziel") speichereZeitNeu("doing", f);
 });
 
 document.addEventListener("change", function (e) {
   var t = e.target;
-  if (t.getAttribute && t.getAttribute("data-datei") === "importieren" && t.files && t.files[0]) {
+  if (!t.getAttribute || !t.files || !t.files.length) return;
+  var datei = t.getAttribute("data-datei");
+  if (datei === "importieren") {
     importiere(t.files[0]);
+  } else if (datei === "wartend") {
+    wartendHinzufuegen(t.getAttribute("data-kontext"), t.files);
+    t.value = "";
+  } else if (datei === "direkt") {
+    anhangHinzufuegen(t.getAttribute("data-art"), t.getAttribute("data-id"), t.files);
+    t.value = "";
   }
 });
 
@@ -942,6 +1224,7 @@ document.querySelector('[data-aktion="sichern"]').innerHTML = ICON.sichern;
 document.getElementById("btn-zurueck").innerHTML = ICON.zurueck;
 wendeThemaAn();
 zeichne();
+uebernehmeGeteilte();
 if ("serviceWorker" in navigator && /^https?:/.test(location.protocol)) {
   navigator.serviceWorker.register("./sw.js").catch(function () {});
 }
