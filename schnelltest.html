@@ -182,7 +182,7 @@
       klick('.aktion-liste [data-aktion="doing-loeschen"]');
       await bis(function () { return !$$(".doing").find(function (li) { return li.textContent.indexOf("Schnelltest Doing") !== -1; }); }, 2000, "Doing gelöscht");
     }],
-    ["Projekt anlegen und per Langdruck löschen", async function () {
+    ["Projekt anlegen, per Langdruck Menü öffnen und löschen", async function () {
       klick('[data-aktion="projekt-neu"]');
       var f = await bis(function () { return $('[data-form="projekt-speichern"]'); }, 2000, "Projekt-Formular");
       eingeben(f.querySelector('[name="titel"]'), "Schnelltest Projekt");
@@ -190,6 +190,14 @@
       var chip = await bis(function () { return $$(".projekt-chip").find(function (c) { return c.textContent === "Schnelltest Projekt"; }); }, 2000, "Projekt-Chip");
       var anzahl = $$(".projekt-chip[data-lang]").length;
       await langdruck(chip);
+      await bis(function () { return $(".aktion-liste [data-aktion='projekt-loeschen']"); }, 2000, "Projekt-Menü");
+      pruefe($(".aktion-liste [data-aktion='projekt-teilen']") && $(".aktion-liste [data-aktion='projekt-umbenennen']"), "Projekt-Menü ohne Teilen oder Umbenennen");
+      pruefe($(".aktion-liste [data-aktion='projekt-nach-vorn']"), "Projekt-Menü ohne „Nach vorn“ (Projekt steht nicht an erster Stelle)");
+      klick(".aktion-liste [data-aktion='projekt-nach-vorn']");
+      await bis(function () { return $$(".projekt-chip")[0].textContent === "Schnelltest Projekt"; }, 2000, "Projekt steht vorn");
+      await langdruck($$(".projekt-chip")[0]);
+      await bis(function () { return $(".aktion-liste [data-aktion='projekt-loeschen']"); }, 2000, "Projekt-Menü (zweites Mal)");
+      klick(".aktion-liste [data-aktion='projekt-loeschen']");
       await bis(function () { return !$$(".projekt-chip").find(function (c) { return c.textContent === "Schnelltest Projekt"; }); }, 2000, "Projekt gelöscht");
       pruefe($$(".projekt-chip[data-lang]").length === anzahl - 1, "Projektzahl stimmt nicht");
     }],

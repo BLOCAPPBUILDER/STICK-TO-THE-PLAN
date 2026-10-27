@@ -173,7 +173,7 @@ function projektFormular(p) {
     '<div class="formular-knoepfe">' +
       (p && daten.projekte.length > 1 ? '<button type="button" class="klein gefahr" data-aktion="projekt-loeschen" data-id="' + esc(p.id) + '">Projekt löschen</button>' : "") +
       '<span class="spacer"></span><button type="submit" class="knopf">Speichern</button></div>' +
-    (p ? '<p class="hinweis">Beim Löschen verschwinden alle Doings, Notizen, Meilensteine und Dateien dieses Projekts. Tipp: Auch langes Drücken auf den Projektnamen löscht es.</p>' : "") +
+    (p ? '<p class="hinweis">Beim Löschen verschwinden alle Doings, Notizen, Meilensteine und Dateien dieses Projekts. Tipp: Langes Drücken auf den Projektnamen öffnet ein Menü zum Umbenennen und Löschen.</p>' : "") +
     "</form>";
 }
 
@@ -210,6 +210,70 @@ function projektLoeschen(id) {
   speichereUi();
   schliesseSheet();
   aktualisiere();
+}
+
+/* Langdruck auf ein Projekt: Umbenennen oder Löschen. Wirkt auf das gedrückte Projekt, nicht auf das aktive. */
+function oeffneProjektMenue(id) {
+  var p = findeProjekt(id);
+  if (!p) return;
+  var stelle = daten.projekte.indexOf(p);
+  var letzte = daten.projekte.length - 1;
+  var knopf = function (aktion, text, extra) {
+    return '<button type="button"' + (extra || "") + ' data-aktion="' + aktion + '" data-id="' + esc(id) + '">' + text + "</button>";
+  };
+  var h = '<div class="aktion-liste">';
+  if (stelle > 0) {
+    h += knopf("projekt-nach-vorn", ICON.hoch + "Nach vorn (zuerst anzeigen)");
+    h += knopf("projekt-verschieben", ICON.hoch + "Nach links", ' data-richtung="-1"');
+  }
+  if (stelle < letzte) h += knopf("projekt-verschieben", ICON.runter + "Nach rechts", ' data-richtung="1"');
+  h += knopf("projekt-teilen", ICON.teilen + "Teilen");
+  h += knopf("projekt-umbenennen", ICON.stift + "Umbenennen");
+  h += '<button type="button" class="gefahr" data-aktion="projekt-loeschen" data-id="' + esc(id) + '">' + ICON.muell + "Löschen</button>";
+  oeffneSheet(p.name.slice(0, 60), h + "</div>", "aktion");
+}
+
+/* Projekt-Reihenfolge: die Reihenfolge der Projektleiste zeigt die Priorität. */
+function projektVerschieben(id, richtung) {
+  var i = daten.projekte.findIndex(function (p) { return p.id === id; });
+  var j = i + richtung;
+  if (i < 0 || j < 0 || j >= daten.projekte.length) return;
+  var tmp = daten.projekte[i];
+  daten.projekte[i] = daten.projekte[j];
+  daten.projekte[j] = tmp;
+  schliesseSheet();
+  aktualisiere();
+}
+
+function projektNachVorn(id) {
+  var i = daten.projekte.findIndex(function (p) { return p.id === id; });
+  if (i <= 0) return;
+  var p = daten.projekte.splice(i, 1)[0];
+  daten.projekte.unshift(p);
+  schliesseSheet();
+  aktualisiere();
+}
+
+/* Teilt den Stand eines Projekts als Text: offene Doings, Notizen, Meilensteine. */
+function teileProjekt(id) {
+  var p = findeProjekt(id);
+  if (!p) return;
+  var zeilen = [p.name, "", "Offene Doings:"];
+  var offene = p.doings.filter(function (d) { return !d.erledigt; });
+  offene.forEach(function (d) {
+    zeilen.push("- " + d.text + (d.faellig ? " (fällig " + datumText(d.faellig) + ")" : ""));
+  });
+  if (!offene.length) zeilen.push("(keine)");
+  if (p.notizen.length) {
+    zeilen.push("", "Notizen:");
+    p.notizen.forEach(function (n) { zeilen.push("- " + (n.text || n.link || "Foto")); });
+  }
+  var text = zeilen.join("\n");
+  schliesseSheet();
+  if (!navigator.share) return kopiere(text, document.createElement("span"));
+  navigator.share({ title: p.name, text: text }).catch(function (fehler) {
+    if (!fehler || fehler.name !== "AbortError") kopiere(text, document.createElement("span"));
+  });
 }
 
 /* ---------- Dateien an Doings und Notizen ---------- */
@@ -497,6 +561,7 @@ function zeitSeiteHtml() {
   var heute = heuteIso();
   var datum = pr.zeitModus === "datum";
   var h = '<section class="karte zeit-karte">';
+  h += '<div class="werkzeug"><button type="button" class="chip" data-aktion="zeit-form" aria-pressed="' + zeitFormOffen + '">+ Eintrag</button></div>';
   h += '<div class="zeit-modus" role="group" aria-label="Modus">' +
     '<button type="button" class="chip" data-aktion="zeit-modus" data-wert="datum" aria-pressed="' + datum + '">Mit Datum</button>' +
     '<button type="button" class="chip" data-aktion="zeit-modus" data-wert="generisch" aria-pressed="' + !datum + '">Generisch</button></div>';
@@ -817,14 +882,19 @@ function importiere(datei) {
     }
     if (!confirm("Alle aktuellen Projekte und Dateien durch den Inhalt dieser Datei ersetzen?")) return;
 
-    var roheDateien = Array.isArray(roh.dateien) ? roh.dateien : [];
-    Promise.all(roheDateien.filter(function (d) {
-      return d && typeof d.id === "string" && typeof d.daten === "string";
-    }).map(function (d) {
-      return fetch(d.daten).then(function (antwort) { return antwort.blob(); }).then(function (blob) {
-        return { id: d.id, name: String(d.name || "Datei"), typ: String(d.typ || blob.type), groesse: blob.size, archiv: !!d.archiv, erstellt: Date.now(), blob: blob };
-      });
-    })).then(dateienErsetzen).then(function () {
+    /* Nur wenn die Sicherung Dateien mitbringt, werden die vorhandenen ersetzt. Sonst blieben Fotos ungetroffen. */
+    var roheDateien = Array.isArray(roh.dateien) ? roh.dateien : null;
+    var dateienFertig = roheDateien
+      ? Promise.all(roheDateien.filter(function (d) {
+          /* Nur eingebettete Daten (data:), keine Adressen aus dem Netz */
+          return d && typeof d.id === "string" && typeof d.daten === "string" && /^data:/i.test(d.daten);
+        }).map(function (d) {
+          return fetch(d.daten).then(function (antwort) { return antwort.blob(); }).then(function (blob) {
+            return { id: d.id, name: String(d.name || "Datei"), typ: String(d.typ || blob.type), groesse: blob.size, archiv: !!d.archiv, erstellt: Date.now(), blob: blob };
+          });
+        })).then(dateienErsetzen)
+      : Promise.resolve();
+    dateienFertig.then(function () {
       daten = neu;
       ui.aktivesProjekt = "";
       speichereUi();
@@ -886,6 +956,7 @@ function oeffneSheet(titel, inhalt, art) {
   offenerSheet = art;
   document.body.style.overflow = "hidden";
   ladeAnhaenge(s);
+  fensterStart = art === "formular" ? fensterWerte(s) : "";
 }
 
 function schliesseSheet() {
@@ -894,6 +965,22 @@ function schliesseSheet() {
   s.innerHTML = "";
   offenerSheet = null;
   document.body.style.overflow = "";
+}
+
+/* Fragt nach, wenn in einem Bearbeiten-Fenster Text geändert, aber nicht gespeichert wurde.
+   Gilt nur für Tipps neben das Fenster, Schließen-Knopf und Escape. */
+function fensterWerte(s) {
+  return Array.prototype.map.call(s.querySelectorAll("input:not([type=file]):not([type=hidden]), textarea, select"), function (el) {
+    return el.name + "=" + el.value;
+  }).join("\n");
+}
+
+var fensterStart = "";
+
+function schliesseSheetNachFrage() {
+  var s = document.getElementById("sheet");
+  if (offenerSheet === "formular" && fensterWerte(s) !== fensterStart && !confirm("Änderungen verwerfen?")) return;
+  schliesseSheet();
 }
 
 /* ---------- Zeichnen ---------- */
@@ -974,7 +1061,7 @@ document.addEventListener("pointerdown", function (e) {
     var art = el.getAttribute("data-lang");
     var id = el.getAttribute("data-id");
     ausfuehren = function () {
-      if (art === "projekt") projektLoeschenAbfrage(id);
+      if (art === "projekt") oeffneProjektMenue(id);
       else oeffneAktionen(art, id);
     };
   }
@@ -1050,6 +1137,18 @@ document.addEventListener("click", function (e) {
       break;
     case "projekt-bearbeiten":
       oeffneSheet("Projekt bearbeiten", projektFormular(P()), "formular");
+      break;
+    case "projekt-nach-vorn":
+      projektNachVorn(id);
+      break;
+    case "projekt-verschieben":
+      projektVerschieben(id, Number(el.getAttribute("data-richtung")));
+      break;
+    case "projekt-teilen":
+      teileProjekt(id);
+      break;
+    case "projekt-umbenennen":
+      oeffneSheet("Projekt bearbeiten", projektFormular(findeProjekt(id)), "formular");
       break;
     case "projekt-loeschen":
       projektLoeschenAbfrage(id);
@@ -1230,7 +1329,7 @@ document.addEventListener("click", function (e) {
       break;
     }
     case "sheet-zu":
-      schliesseSheet();
+      schliesseSheetNachFrage();
       break;
   }
 });
@@ -1268,7 +1367,7 @@ document.addEventListener("change", function (e) {
 });
 
 document.addEventListener("keydown", function (e) {
-  if (e.key === "Escape" && offenerSheet) schliesseSheet();
+  if (e.key === "Escape" && offenerSheet) schliesseSheetNachFrage();
 });
 
 if (dunkelAbfrage && dunkelAbfrage.addEventListener) {
@@ -1325,6 +1424,8 @@ document.getElementById("btn-zurueck").innerHTML = ICON.zurueck;
 wendeThemaAn();
 zeichne();
 uebernehmeGeteilte();
+/* Dauerhaften Speicher anfordern, damit der Browser Fotos und Notizen nicht ohne Rückfrage löscht */
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {});
 if ("serviceWorker" in navigator && /^https?:/.test(location.protocol)) {
   navigator.serviceWorker.register("./sw.js").catch(function () {});
 }

@@ -6,7 +6,7 @@
 
 importScripts("./kern.js", "./dateien.js");
 
-var FASSUNG = "2026-10-26-3";
+var FASSUNG = "2026-10-27-3";
 var SPEICHER = "stick-to-the-plan-" + FASSUNG;
 var GRUNDGERUEST = [
   "./", "./index.html", "./app.css", "./daten.js", "./kern.js", "./dateien.js", "./app.js",
@@ -63,10 +63,18 @@ self.addEventListener("fetch", function (e) {
   e.respondWith(
     fetch(e.request)
       .then(function (antwort) {
-        var kopie = antwort.clone();
-        caches.open(SPEICHER).then(function (c) { c.put(e.request, kopie); });
+        /* Nur gültige Antworten in den Zwischenspeicher (kein 404, keine Teilantwort) */
+        if (antwort.ok && antwort.status === 200) {
+          var kopie = antwort.clone();
+          caches.open(SPEICHER).then(function (c) { c.put(e.request, kopie); }).catch(function () {});
+        }
         return antwort;
       })
-      .catch(function () { return caches.match(e.request); })
+      .catch(function () {
+        /* Offline: Adresse ohne Suchteil (z. B. ?geteilt=ok) und sonst die Startseite */
+        return caches.match(e.request, { ignoreSearch: true }).then(function (treffer) {
+          return treffer || caches.match("./index.html");
+        });
+      })
   );
 });

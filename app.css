@@ -12,9 +12,9 @@
   --text-dim:#5c5c63;
   --accent:#ff5a36;
   --accent-ink:#c93a1a;
-  --accent-text:#ffffff;
+  --accent-text:#1a1005;
   --gefahr:#c8242b;
-  --erledigt:#8e8e93;
+  --erledigt:#6e6e75;
   --radius:24px;
   --ecke:8px;
   --blur:blur(18px) saturate(140%);
@@ -34,7 +34,7 @@
   --accent-ink:#ff8a6b;
   --accent-text:#1a1005;
   --gefahr:#ff5c60;
-  --erledigt:#7c7c84;
+  --erledigt:#8f8f97;
   --schatten:0 1px 2px rgba(0,0,0,.3), 0 12px 32px rgba(0,0,0,.35);
   --glas-blob:.2;
 }
@@ -505,3 +505,20 @@ label{ display:grid; gap:6px; font-size:13px; color:var(--text-dim); }
 /* Logo einfarbig: voller Kreis in Textfarbe, Haken als Aussparung in Hintergrundfarbe (folgt Hell und Dunkel) */
 .logo{ color:var(--text); }
 .logo-haken{ fill:var(--bg); stroke:var(--bg); }
+
+/* Überläufe: lange Titel, Links und Wörter brechen um (Handybreite) */
+.sheet-kopf h2{ min-width:0; overflow-wrap:anywhere; }
+.ze-knopf > span:last-child{ min-width:0; overflow-wrap:anywhere; }
+.promt p, .hinweis, .leer{ overflow-wrap:anywhere; }
+
+/* Eingabezeile: Datum in eigener Zeile, die beiden Knöpfe teilen sich die nächste */
+.schnell-zeile, .zeit-schnell .schnell-zeile{ grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+.schnell-zeile input[type="date"]{ grid-column:1 / -1; width:100%; }
+.schnell-zeile .knopf{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:normal; }
+
+/* Tippflächen: sichtbar bleibt alles gleich, die Trefferfläche wird größer */
+.haken, .falt, .klein{ position:relative; }
+.haken::after, .falt::after, .klein::after{ content:""; position:absolute; inset:-8px; }
+
+/* Eingabefelder mit erkennbarem Rand */
+input, select, textarea{ border-color:color-mix(in srgb, var(--text) 30%, transparent); }
