@@ -38,7 +38,7 @@ var offenerSheet = null;            // "aktion", "formular" oder null
 var zeitFormOffen = false;          // Eingabe auf der Zeitleiste: erst nach Tipp auf den Strahl sichtbar
 var langdruck = null;               // Zeitgeber für den Langdruck
 var langdruckAusgeloest = false;    // der Tipp nach einem Langdruck zählt nicht
-var speichertGerade = false;        // verhindert doppeltes Absenden beim Speichern mit Dateien
+var speicherReihe = Promise.resolve();   // Dateien werden nacheinander gespeichert: eine zweite Auswahl wartet, statt verloren zu gehen
 var wartend = { notiz: [], doing: [] };   // ausgewählte Dateien, die noch nicht gespeichert sind
 var vorschauUrls = {};              // Dateikennung -> Adresse zur Anzeige (je Datei nur einmal)
 var wisch = null;
@@ -440,10 +440,10 @@ function heller(hex, anteil) {
 /* Skizze: einfache Zeichenfläche im Notizen-Formular. Das Ergebnis wird als Bild an die Notiz gehängt. */
 var ZEICHEN_FARBEN = ["#1c1c1e", "#ff5a36", "#2f8f5b", "#2d6cdf", "#8a4fd6", "#f2c12e"];
 var ZEICHEN_BREITEN = [{ name: "fein", px: 2 }, { name: "mittel", px: 6 }, { name: "dick", px: 14 }];
-var zeichnung = { werkzeug: "stift", farbe: ZEICHEN_FARBEN[0], breite: 6, verlauf: [] };
+var zeichnung = { werkzeug: "stift", farbe: ZEICHEN_FARBEN[0], breite: 6, verlauf: [], gemalt: false };
 
 function oeffneZeichnen() {
-  zeichnung = { werkzeug: "stift", farbe: ZEICHEN_FARBEN[0], breite: 6, verlauf: [] };
+  zeichnung = { werkzeug: "stift", farbe: ZEICHEN_FARBEN[0], breite: 6, verlauf: [], gemalt: false };
   var werkzeuge = [["stift", "Stift"], ["marker", "Marker"], ["radierer", "Radierer"]].map(function (w) {
     return '<button type="button" class="chip" data-aktion="zeichen-werkzeug" data-wert="' + w[0] + '" aria-pressed="' + (w[0] === "stift") + '">' + w[1] + "</button>";
   }).join("");
@@ -483,8 +483,8 @@ function oeffneZeichnen() {
   }
   c.addEventListener("pointerdown", function (e) {
     if (!e.isPrimary) return;          /* nur ein Finger oder der Stift, ein Handballen zeichnet nicht mit */
-    if (zeichnung.verlauf.length >= 8) zeichnung.verlauf.shift();
-    zeichnung.verlauf.push(ctx.getImageData(0, 0, c.width, c.height));
+    skizzeMerken(c);
+    if (zeichnung.werkzeug !== "radierer") zeichnung.gemalt = true;
     letzter = punkt(e);
     c.setPointerCapture(e.pointerId);
     stil();
@@ -495,15 +495,20 @@ function oeffneZeichnen() {
   });
   c.addEventListener("pointermove", function (e) {
     if (!letzter || !e.isPrimary) return;
-    var p = punkt(e);
-    /* Jedes Teilstück wird deckend gezeichnet. Der Marker ist eine helle Deckfarbe, daher gibt es keine dunklen Gelenke
+    /* Alle Zwischenpunkte dieses Ereignisses zeichnen, damit der Strich auch bei gebündelten Ereignissen (schwache Geräte) lückenlos bleibt.
+       Jedes Teilstück wird deckend gezeichnet. Der Marker ist eine helle Deckfarbe, daher gibt es keine dunklen Gelenke
        und kein Neuzeichnen des ganzen Strichs. */
-    stil();
-    ctx.beginPath();
-    ctx.moveTo(letzter.x, letzter.y);
-    ctx.lineTo(p.x, p.y);
-    ctx.stroke();
-    letzter = p;
+    var punkte = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+    if (!punkte.length) punkte = [e];
+    punkte.forEach(function (ereignis) {
+      var p = punkt(ereignis);
+      stil();
+      ctx.beginPath();
+      ctx.moveTo(letzter.x, letzter.y);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+      letzter = p;
+    });
   });
   ["pointerup", "pointercancel"].forEach(function (ereignis) {
     c.addEventListener(ereignis, function () { letzter = null; });
@@ -516,14 +521,27 @@ function zeichnungWerkzeuge(attr, wert) {
   });
 }
 
-/* Ist die Zeichenfläche komplett weiß? Dann gilt die Skizze als leer. */
+/* Ist die Skizze leer? Nur radiert (oder nichts getan) gilt als leer. Nach dem Malen zählt, ob noch deutliche Farbe da ist:
+   Radierkanten sind nicht exakt weiß, daher zählt erst ein Rest von mehr als 60 Bildpunkten als Inhalt. */
 function skizzeLeer(c) {
-  var d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+  if (!zeichnung.gemalt) return true;
+  var d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data, tinte = 0;
   for (var i = 0; i < d.length; i += 4) {
-    /* Kanten des Radierers sind nicht exakt weiß, daher eine kleine Toleranz */
-    if (d[i] < 250 || d[i + 1] < 250 || d[i + 2] < 250) return false;
+    if (d[i] < 235 || d[i + 1] < 235 || d[i + 2] < 235) {
+      tinte++;
+      if (tinte > 60) return false;
+    }
   }
   return true;
+}
+
+/* Rückgängig-Schritt: eine Kopie der Fläche als Bild im Speicher. Kein Auslesen der Pixel (das bremst auf schwachen Geräten). Höchstens 8. */
+function skizzeMerken(c) {
+  var kopie = document.createElement("canvas");
+  kopie.width = c.width; kopie.height = c.height;
+  kopie.getContext("2d").drawImage(c, 0, 0);
+  if (zeichnung.verlauf.length >= 8) zeichnung.verlauf.shift();
+  zeichnung.verlauf.push(kopie);
 }
 
 function zeichnungUebernehmen() {
@@ -585,46 +603,48 @@ function archivHinzufuegen(dateiListe, kontext) {
   var neu = Array.from(dateiListe);
   if (!neu.length) return;
   Promise.all(neu.map(function (f) {
-    return verkleinereBild(f).then(function (b) { return dateiSpeichern(b, f.name, true); });
-  })).then(function () {
-    oeffneArchiv(kontext || null);
+    return verkleinereBild(f).then(function (b) { return { name: f.name, blob: b }; });
+  })).then(function (liste) {
+    mitDateien(liste, function () { oeffneArchiv(kontext || null); });   /* über die Warteschlange, damit parallele Vorgänge nicht kollidieren */
   }, dateiFehler);
 }
 
-/* Speichert die Dateien und ruft dann auf. Verhindert doppeltes Absenden. */
+/* Speichert die Dateien und ruft dann auf. Vorgänge laufen nacheinander (speicherReihe): ein weiterer Vorgang wartet,
+   statt abgewiesen oder verworfen zu werden. Schlägt einer fehl, bleibt nichts übrig (siehe alleOderKeine). */
 function mitDateien(liste, dann) {
-  if (speichertGerade) return alert("Bitte warte kurz, bis die letzten Dateien gespeichert sind.");
-  speichertGerade = true;
-  var geschrieben = [];   /* Kennungen aller Kopien dieses Vorgangs, damit bei Fehler nichts übrig bleibt */
-  /* Jedes Bild liegt nur einmal, im Bilderarchiv. Notizen und Doings verweisen darauf.
-     Skizzen (ausArchiv) bleiben an der Notiz. Bilder aus dem Archiv (vorhanden) werden nur verwiesen. */
-  Promise.all(liste.map(function (d) {
-    if (d.vorhanden) return Promise.resolve({ id: d.id, name: d.name, typ: d.typ, groesse: d.groesse, archiv: true });
-    var blob = d.blob || d;
-    var archiv = /^image\//.test(blob.type) && !d.ausArchiv;
-    return dateiSpeichern(blob, d.name, archiv).then(function (m) {
-      geschrieben.push(m.id);
-      return m;
-    });
-  }))
-    .then(dann, function () {
-      dateienLoeschen(geschrieben).catch(function () {});
-      dateiFehler();
-    })
-    .then(function () { speichertGerade = false; }, function () { speichertGerade = false; });
+  var fertig = speicherReihe.then(function () { return dateienAlsGruppe(liste); });
+  speicherReihe = fertig.catch(function () {});   /* die Reihe läuft auch nach einem Fehler weiter */
+  fertig.then(dann, dateiFehler);
+}
+
+/* Jedes Bild liegt nur einmal, im Bilderarchiv. Notizen und Doings verweisen darauf.
+   Skizzen (ausArchiv) bleiben an der Notiz, kommen also nie ins Archiv. Bilder aus dem Archiv (vorhanden) werden nur verwiesen. */
+function dateienAlsGruppe(liste) {
+  return alleOderKeine(liste.map(function (d) {
+    return function () {
+      if (d.vorhanden) return Promise.resolve({ neu: false, anhang: { id: d.id, name: d.name, typ: d.typ, groesse: d.groesse, archiv: true } });
+      var blob = d.blob || d;
+      var archiv = /^image\//.test(blob.type) && !d.ausArchiv;
+      return dateiSpeichern(blob, d.name, archiv).then(function (m) { return { neu: true, anhang: m }; });
+    };
+  }));
 }
 
 /* ---------- Ansicht Doings ---------- */
 
 function doingHtml(d) {
   var offen = !ui.eingeklappt[d.id];
+  /* Überfällig: fällig vor heute und noch nicht erledigt. Der Hinweis steht als Text im Dokument, nicht nur als Gestaltung (Screenreader). */
+  var ueberfaellig = !d.erledigt && !!d.faellig && d.faellig < heuteIso();
   return '<li class="doing' + (d.erledigt ? " fertig" : "") + (offen ? "" : " eingeklappt") + '" data-lang="doing" data-id="' + esc(d.id) + '">' +
+    /* Schalter mit gleichbleibender Beschriftung: der Zustand steht in aria-pressed (sonst widerspricht „Erledigt“ dem Zustand „an“) */
     '<button type="button" class="haken" data-aktion="doing-haken" data-id="' + esc(d.id) + '" aria-pressed="' + !!d.erledigt + '" aria-label="' +
-      (d.erledigt ? "Wieder öffnen: " : "Erledigt: ") + esc(d.text) + '">' + (d.erledigt ? ICON.check : "") + "</button>" +
+      "Erledigt: " + esc(d.text) + '">' + (d.erledigt ? ICON.check : "") + "</button>" +
     '<div class="doing-mitte">' +
       '<button type="button" class="doing-text" data-aktion="doing-bearbeiten" data-id="' + esc(d.id) + '">' +
         "<span>" + esc(d.text) + "</span>" +
-        (d.faellig ? '<small class="faellig' + (!d.erledigt && d.faellig < heuteIso() ? " ueberfaellig" : "") + '">' + ICON.kalender + "fällig " + esc(datumText(d.faellig)) + "</small>" : "") +
+        (d.faellig ? '<small class="faellig' + (ueberfaellig ? " ueberfaellig" : "") + '">' + ICON.kalender + "fällig " + esc(datumText(d.faellig)) +
+          (ueberfaellig ? ' <span class="marke-ueberfaellig">überfällig</span>' : "") + "</small>" : "") +
         (offen && d.notiz ? "<small>" + esc(d.notiz) + "</small>" : "") +
         (offen && d.prompt ? '<em class="marke">Promt</em>' : "") +
       "</button>" +
@@ -1021,7 +1041,9 @@ function exportiere() {
     if (mb > 150 && !confirm("Die Sicherung wird rund " + Math.round(mb * 1.4) + " MB groß. Das kann auf dem Handy lange dauern oder fehlschlagen. Trotzdem sichern?")) return null;
     /* Dateien nacheinander lesen, damit nicht alle gleichzeitig im Speicher liegen */
     var teile = [];
-    return alle.reduce(function (kette, satz) {
+    /* Neueste zuerst, wie im Archiv: so bleibt die Reihenfolge beim Wiederherstellen erhalten */
+    var nachArchiv = alle.slice().sort(function (a, b) { return (b.erstellt || 0) - (a.erstellt || 0); });
+    return nachArchiv.reduce(function (kette, satz) {
       return kette.then(function () {
         return blobZuDatenUrl(satz.blob).then(function (url) {
           teile.push({ id: satz.id, name: satz.name, typ: satz.typ, groesse: satz.groesse, archiv: !!satz.archiv, erstellt: satz.erstellt || 0, daten: url });
@@ -1069,9 +1091,10 @@ function importiere(datei) {
       ? Promise.all(roheDateien.filter(function (d) {
           /* Nur eingebettete Daten (data:), keine Adressen aus dem Netz */
           return d && typeof d.id === "string" && typeof d.daten === "string" && /^data:/i.test(d.daten);
-        }).map(function (d) {
+        }).map(function (d, i) {
+          /* Fehlt der Zeitpunkt, hält die Reihenfolge der Datei den Stand: der erste Eintrag ist der neueste */
           return fetch(d.daten).then(function (antwort) { return antwort.blob(); }).then(function (blob) {
-            return { id: d.id, name: String(d.name || "Datei"), typ: String(d.typ || blob.type), groesse: blob.size, archiv: !!d.archiv, erstellt: Number(d.erstellt) || Date.now(), blob: blob };
+            return { id: d.id, name: String(d.name || "Datei"), typ: String(d.typ || blob.type), groesse: blob.size, archiv: !!d.archiv, erstellt: Number(d.erstellt) || Date.now() - i, blob: blob };
           });
         })).then(dateienErsetzen)
       : Promise.resolve();
@@ -1505,14 +1528,14 @@ document.addEventListener("click", function (e) {
     case "zeichen-zurueck": {
       var zc = document.querySelector("#sheet .zeichen-flaeche");
       var vorher = zeichnung.verlauf.pop();
-      if (zc && vorher) zc.getContext("2d").putImageData(vorher, 0, 0);
+      if (zc && vorher) zc.getContext("2d").drawImage(vorher, 0, 0);
       break;
     }
     case "zeichen-leeren": {
       var lc = document.querySelector("#sheet .zeichen-flaeche");
       if (lc) {
         var lctx = lc.getContext("2d");
-        zeichnung.verlauf.push(lctx.getImageData(0, 0, lc.width, lc.height));
+        skizzeMerken(lc);
         lctx.fillStyle = "#ffffff";
         lctx.fillRect(0, 0, lc.width, lc.height);
       }

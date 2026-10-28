@@ -6,7 +6,8 @@
 
 importScripts("./kern.js", "./dateien.js");
 
-var FASSUNG = "2026-10-28-6";
+var FASSUNG = "2026-10-28-7";
+var NETZ_FRIST = 5000;   /* ms: danach gilt das Netz als nicht erreichbar, die Seite kommt aus dem Zwischenspeicher */
 var SPEICHER = "stick-to-the-plan-" + FASSUNG;
 var GRUNDGERUEST = [
   "./", "./index.html", "./app.css", "./daten.js", "./kern.js", "./dateien.js", "./app.js",
@@ -18,9 +19,13 @@ var TEIL_ZIEL = /\/teilen-ziel$/;
 self.addEventListener("install", function (e) {
   e.waitUntil(
     caches.open(SPEICHER)
-      .then(function (c) { return c.addAll(GRUNDGERUEST); })
+      /* Jede Datei einzeln: fehlt eine, bleiben die übrigen im Zwischenspeicher (bei addAll ginge alles verloren) */
+      .then(function (c) {
+        return Promise.all(GRUNDGERUEST.map(function (adresse) {
+          return c.add(adresse).catch(function () {});
+        }));
+      })
       .then(function () { return self.skipWaiting(); })
-      .catch(function () { return self.skipWaiting(); })
   );
 });
 
@@ -61,8 +66,10 @@ self.addEventListener("fetch", function (e) {
     return;
   }
   if (e.request.method !== "GET" || adresse.origin !== self.location.origin) return;
+  /* Netz zuerst, aber nicht endlos: ein hängendes Netz (Funkloch, schwaches WLAN) zählt nach NETZ_FRIST als offline */
+  var frist = new Promise(function (ok, nein) { setTimeout(function () { nein(new Error("Zeitlimit")); }, NETZ_FRIST); });
   e.respondWith(
-    fetch(e.request)
+    Promise.race([fetch(e.request), frist])
       .then(function (antwort) {
         /* Nur gültige Antworten in den Zwischenspeicher (kein 404, keine Teilantwort) */
         if (antwort.ok && antwort.status === 200) {

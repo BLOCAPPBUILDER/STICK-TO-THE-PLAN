@@ -491,9 +491,8 @@ label{ display:grid; gap:6px; font-size:13px; color:var(--text-dim); }
 
 /* Fälligkeitsdatum mit Kalender-Symbol */
 .doing-text .faellig{ display:inline-flex; align-items:center; gap:6px; }
-.doing-text .faellig.ueberfaellig{ font-weight:700; }
-.doing-text .faellig.ueberfaellig::after{ content:"überfällig"; margin-left:4px; padding:1px 7px; border-radius:999px; border:1px solid color-mix(in srgb, var(--accent) 55%, transparent); font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
-.fertig .doing-text .faellig.ueberfaellig::after{ display:none; }
+.doing-text .faellig.ueberfaellig{ font-weight:700; color:var(--accent-ink); }
+.doing-text .marke-ueberfaellig{ margin-left:4px; padding:1px 7px; border-radius:999px; border:1px solid color-mix(in srgb, var(--accent) 55%, transparent); font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
 .doing-text .faellig svg{ width:16px; height:16px; }
 
 /* Skizze: Werkzeuge, Farben, Stiftdicken und Zeichenfläche */

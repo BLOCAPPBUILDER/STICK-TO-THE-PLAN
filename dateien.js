@@ -91,13 +91,35 @@ function dateienErsetzen(liste) {
   });
 }
 
-/* Geteiltes aus anderen Apps: der Service Worker legt Dateien und Eintrag ab, die App macht daraus Notizen. */
-/* Geteiltes wird nur als Notiz vorgemerkt, nicht ins Bilderarchiv. Die App fragt nach dem Projekt. */
+/* Mehrere Dateien als Gruppe: entweder alle gespeichert oder keine. Schlägt eine fehl, werden die in diesem Vorgang neu geschriebenen
+   wieder entfernt, damit keine verwaisten Dateien übrig bleiben. Jede Aufgabe liefert { neu, anhang }; „neu“ = false für Bilder,
+   die schon im Archiv liegen (die dürfen nie gelöscht werden). Liefert die Anhänge in der Reihenfolge der Aufgaben. */
+function alleOderKeine(aufgaben) {
+  var neu = [];
+  return Promise.all(aufgaben.map(function (aufgabe) {
+    return aufgabe().then(function (r) {
+      if (r.neu) neu.push(r.anhang.id);
+      return { anhang: r.anhang };
+    }, function (fehler) { return { fehler: fehler }; });
+  })).then(function (ergebnis) {
+    var kaputt = ergebnis.filter(function (x) { return x.fehler; })[0];
+    if (!kaputt) return ergebnis.map(function (x) { return x.anhang; });
+    return dateienLoeschen(neu).catch(function () {}).then(function () { throw kaputt.fehler; });
+  });
+}
+
+/* Geteiltes aus anderen Apps: der Service Worker legt Dateien und Eintrag ab, die App macht daraus Notizen.
+   Bilder landen im Bilderarchiv (wie Hochgeladenes), andere Dateien gehören zur Notiz. Die App fragt nach dem Projekt. */
 function teilenAblegen(titel, text, link, dateien) {
-  /* Bilder liegen nur einmal, im Bilderarchiv. Andere Dateien gehören zur Notiz. */
-  return Promise.all(dateien.map(function (d) { return dateiSpeichern(d, d.name, /^image\//.test(d.type)); })).then(function (anhaenge) {
+  return alleOderKeine(dateien.map(function (d) {
+    return function () {
+      return dateiSpeichern(d, d.name, /^image\//.test(d.type)).then(function (anhang) { return { neu: true, anhang: anhang }; });
+    };
+  })).then(function (anhaenge) {
     var satz = { id: neueId(), erstellt: Date.now(), titel: titel, text: text, link: link, anhaenge: anhaenge };
-    return dbVorgang(TEIL_STORE, "readwrite", function (s) { return s.put(satz); });
+    return dbVorgang(TEIL_STORE, "readwrite", function (s) { return s.put(satz); }).catch(function (fehler) {
+      return dateienLoeschen(anhaenge.map(function (a) { return a.id; })).catch(function () {}).then(function () { throw fehler; });
+    });
   });
 }
 
