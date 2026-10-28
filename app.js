@@ -20,6 +20,7 @@ var ICON = {
   stift: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>',
   teilen: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4M5 13v6h14v-6"/></svg>',
   muell: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>',
+  kalender: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>',
   hoch: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg>',
   runter: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>',
   hell: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
@@ -366,18 +367,24 @@ function anhangHinzufuegen(art, id, dateiListe) {
   var eintrag = art === "doing" ? findeDoing(id) : findeNotiz(id);
   var neu = Array.from(dateiListe);
   if (!eintrag || !neu.length) return;
-  mitDateien(neu, function (anhaenge) {
-    eintrag.anhaenge = (eintrag.anhaenge || []).concat(anhaenge);
-    aktualisiere();
-    aktualisiereAnhangBereich(id);
-  });
+  /* Wie bei der Auswahl oben: Bilder erst verkleinern, dann speichern */
+  Promise.all(neu.map(function (f) {
+    return verkleinereBild(f).then(function (b) { return { name: f.name, blob: b }; });
+  })).then(function (liste) {
+    mitDateien(liste, function (anhaenge) {
+      eintrag.anhaenge = (eintrag.anhaenge || []).concat(anhaenge);
+      aktualisiere();
+      aktualisiereAnhangBereich(id);
+    });
+  }, dateiFehler);
 }
 
 /* Ausgewählte Dateien für das Formular oben (noch nicht gespeichert). */
 function wartendBereichHtml(kontext) {
   return '<div class="wartend-liste" data-wartend-liste="' + kontext + '">' + wartendHtml(kontext) + "</div>" +
     '<label class="knopf knopf-zweit datei-knopf">+ Foto oder Datei<input type="file" multiple class="versteckt" data-datei="wartend" data-kontext="' + kontext + '"></label>' +
-    '<button type="button" class="knopf knopf-zweit datei-knopf" data-aktion="archiv-auf" data-kontext="' + kontext + '">Aus Archiv</button>';
+    '<button type="button" class="knopf knopf-zweit datei-knopf" data-aktion="archiv-auf" data-kontext="' + kontext + '">Aus Archiv</button>' +
+    (kontext === "notiz" ? '<button type="button" class="knopf knopf-zweit datei-knopf" data-aktion="zeichnen-auf">Skizze</button>' : "");
 }
 
 function wartendHtml(kontext) {
@@ -403,6 +410,138 @@ function wartendHinzufuegen(kontext, dateiListe) {
   }, dateiFehler);
 }
 
+/* Kurzer Hinweis unten mit „Rückgängig“. Verschwindet nach fünf Sekunden. */
+var rueckgaengigTimer = null;
+function zeigeRueckgaengig(text, zurueck) {
+  var alt = document.getElementById("toast");
+  if (alt) alt.remove();
+  clearTimeout(rueckgaengigTimer);
+  var t = document.createElement("div");
+  t.id = "toast";
+  t.className = "toast";
+  t.setAttribute("role", "status");
+  t.innerHTML = '<span>' + esc(text) + '</span><button type="button" class="klein" data-toast="rueckgaengig">Rückgängig</button>';
+  t.querySelector("[data-toast]").addEventListener("click", function () {
+    t.remove();
+    clearTimeout(rueckgaengigTimer);
+    zurueck();
+  });
+  document.body.appendChild(t);
+  rueckgaengigTimer = setTimeout(function () { t.remove(); }, 5000);
+}
+
+/* Mischt eine Farbe mit Weiß (anteil 0 bis 1): ergibt die helle Deckfarbe des Markers. */
+function heller(hex, anteil) {
+  var n = parseInt(hex.slice(1), 16);
+  var kanal = function (x) { return Math.round(x + (255 - x) * anteil); };
+  return "rgb(" + kanal(n >> 16) + "," + kanal((n >> 8) & 255) + "," + kanal(n & 255) + ")";
+}
+
+/* Skizze: einfache Zeichenfläche im Notizen-Formular. Das Ergebnis wird als Bild an die Notiz gehängt. */
+var ZEICHEN_FARBEN = ["#1c1c1e", "#ff5a36", "#2f8f5b", "#2d6cdf", "#8a4fd6", "#f2c12e"];
+var ZEICHEN_BREITEN = [{ name: "fein", px: 2 }, { name: "mittel", px: 6 }, { name: "dick", px: 14 }];
+var zeichnung = { werkzeug: "stift", farbe: ZEICHEN_FARBEN[0], breite: 6, verlauf: [] };
+
+function oeffneZeichnen() {
+  zeichnung = { werkzeug: "stift", farbe: ZEICHEN_FARBEN[0], breite: 6, verlauf: [] };
+  var werkzeuge = [["stift", "Stift"], ["marker", "Marker"], ["radierer", "Radierer"]].map(function (w) {
+    return '<button type="button" class="chip" data-aktion="zeichen-werkzeug" data-wert="' + w[0] + '" aria-pressed="' + (w[0] === "stift") + '">' + w[1] + "</button>";
+  }).join("");
+  var farben = ZEICHEN_FARBEN.map(function (f, i) {
+    return '<button type="button" class="farbe" data-aktion="zeichen-farbe" data-wert="' + f + '" style="background:' + f + '" aria-label="Farbe ' + (i + 1) + '" aria-pressed="' + (i === 0) + '"></button>';
+  }).join("");
+  var breiten = ZEICHEN_BREITEN.map(function (b, i) {
+    return '<button type="button" class="chip" data-aktion="zeichen-breite" data-wert="' + i + '" aria-pressed="' + (b.px === zeichnung.breite) + '">' + b.name + "</button>";
+  }).join("");
+  oeffneSheet("Skizze",
+    '<div class="zeichen-leiste">' + werkzeuge + '</div>' +
+    '<div class="zeichen-leiste"><span class="zeichen-farben">' + farben + "</span></div>" +
+    '<div class="zeichen-leiste">' + breiten + "</div>" +
+    '<canvas class="zeichen-flaeche" width="800" height="1000" aria-label="Zeichenfläche"></canvas>' +
+    '<div class="formular-knoepfe">' +
+      '<button type="button" class="klein" data-aktion="zeichen-zurueck">Rückgängig</button>' +
+      '<button type="button" class="klein" data-aktion="zeichen-leeren">Leeren</button>' +
+      '<span class="spacer"></span>' +
+      '<button type="button" class="knopf" data-aktion="zeichen-uebernehmen">In Notiz übernehmen</button>' +
+    "</div>",
+    "zeichnen");
+  var c = document.querySelector("#sheet .zeichen-flaeche");
+  var ctx = c.getContext("2d");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, c.width, c.height);
+  var letzter = null;
+  function punkt(e) {
+    var r = c.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * c.width / r.width, y: (e.clientY - r.top) * c.height / r.height };
+  }
+  function stil() {
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = zeichnung.werkzeug === "radierer" ? "#ffffff" : zeichnung.werkzeug === "marker" ? heller(zeichnung.farbe, 0.6) : zeichnung.farbe;
+    ctx.lineWidth = zeichnung.werkzeug === "radierer" ? zeichnung.breite * 3 : zeichnung.werkzeug === "marker" ? zeichnung.breite * 2.5 : zeichnung.breite;
+  }
+  c.addEventListener("pointerdown", function (e) {
+    if (!e.isPrimary) return;          /* nur ein Finger oder der Stift, ein Handballen zeichnet nicht mit */
+    if (zeichnung.verlauf.length >= 8) zeichnung.verlauf.shift();
+    zeichnung.verlauf.push(ctx.getImageData(0, 0, c.width, c.height));
+    letzter = punkt(e);
+    c.setPointerCapture(e.pointerId);
+    stil();
+    ctx.beginPath();
+    ctx.moveTo(letzter.x, letzter.y);
+    ctx.lineTo(letzter.x + 0.1, letzter.y + 0.1);
+    ctx.stroke();
+  });
+  c.addEventListener("pointermove", function (e) {
+    if (!letzter || !e.isPrimary) return;
+    var p = punkt(e);
+    /* Jedes Teilstück wird deckend gezeichnet. Der Marker ist eine helle Deckfarbe, daher gibt es keine dunklen Gelenke
+       und kein Neuzeichnen des ganzen Strichs. */
+    stil();
+    ctx.beginPath();
+    ctx.moveTo(letzter.x, letzter.y);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    letzter = p;
+  });
+  ["pointerup", "pointercancel"].forEach(function (ereignis) {
+    c.addEventListener(ereignis, function () { letzter = null; });
+  });
+}
+
+function zeichnungWerkzeuge(attr, wert) {
+  document.querySelectorAll('#sheet [data-aktion="' + attr + '"]').forEach(function (b) {
+    b.setAttribute("aria-pressed", b.getAttribute("data-wert") === wert);
+  });
+}
+
+/* Ist die Zeichenfläche komplett weiß? Dann gilt die Skizze als leer. */
+function skizzeLeer(c) {
+  var d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+  for (var i = 0; i < d.length; i += 4) {
+    /* Kanten des Radierers sind nicht exakt weiß, daher eine kleine Toleranz */
+    if (d[i] < 250 || d[i + 1] < 250 || d[i + 2] < 250) return false;
+  }
+  return true;
+}
+
+function zeichnungUebernehmen() {
+  var c = document.querySelector("#sheet .zeichen-flaeche");
+  if (!c) return;
+  if (skizzeLeer(c)) return alert("Die Skizze ist noch leer.");
+  c.toBlob(function (blob) {
+    if (!blob) return dateiFehler();
+    var jetzt = new Date();
+    var zwei = function (n) { return String(n).padStart(2, "0"); };
+    var name = "Skizze-" + datumVon(jetzt.getTime()) + "-" + zwei(jetzt.getHours()) + zwei(jetzt.getMinutes()) + ".png";
+    /* Skizzen kommen nicht ins Bilderarchiv, nur an die Notiz */
+    wartend.notiz.push({ name: name, blob: blob, ausArchiv: true });
+    schliesseSheet();
+    aktualisiereWartend("notiz");
+  }, "image/png");
+}
+
 /* Bilderarchiv: alle Bilder, die gesammelt wurden (geteilt oder hochgeladen). Aus dem Archiv werden Kopien an Notizen gehängt. */
 function oeffneArchiv(kontext) {
   archivHolen().then(function (liste) {
@@ -422,6 +561,25 @@ function oeffneArchiv(kontext) {
   }).catch(dateiFehler);
 }
 
+/* Ein Bild aus dem Archiv löschen. Es verschwindet auch aus allen Notizen und Doings, die es verwenden. */
+function archivBildEntfernen(id, kontext) {
+  var nutzer = [];
+  daten.projekte.forEach(function (p) {
+    p.doings.concat(p.notizen).forEach(function (x) {
+      if ((x.anhaenge || []).some(function (a) { return a.id === id; })) nutzer.push(x);
+    });
+  });
+  var hinweis = nutzer.length ? "\n\nEs wird auch aus " + nutzer.length + " Notiz(en) oder Doing(s) entfernt, die es verwenden." : "";
+  if (!confirm("Dieses Bild aus dem Archiv löschen?" + hinweis)) return;
+  nutzer.forEach(function (x) {
+    x.anhaenge = x.anhaenge.filter(function (a) { return a.id !== id; });
+  });
+  dateienLoeschen([id]).then(function () {
+    if (nutzer.length) aktualisiere();
+    oeffneArchiv(kontext);
+  }, dateiFehler);
+}
+
 /* Bilder ins Archiv hochladen (ohne Notiz). Verkleinerte Kopien, wie bei Notizen. */
 function archivHinzufuegen(dateiListe, kontext) {
   var neu = Array.from(dateiListe);
@@ -435,10 +593,24 @@ function archivHinzufuegen(dateiListe, kontext) {
 
 /* Speichert die Dateien und ruft dann auf. Verhindert doppeltes Absenden. */
 function mitDateien(liste, dann) {
-  if (speichertGerade) return;
+  if (speichertGerade) return alert("Bitte warte kurz, bis die letzten Dateien gespeichert sind.");
   speichertGerade = true;
-  Promise.all(liste.map(function (d) { return dateiSpeichern(d.blob || d, d.name); }))
-    .then(dann, dateiFehler)
+  var geschrieben = [];   /* Kennungen aller Kopien dieses Vorgangs, damit bei Fehler nichts übrig bleibt */
+  /* Jedes Bild liegt nur einmal, im Bilderarchiv. Notizen und Doings verweisen darauf.
+     Skizzen (ausArchiv) bleiben an der Notiz. Bilder aus dem Archiv (vorhanden) werden nur verwiesen. */
+  Promise.all(liste.map(function (d) {
+    if (d.vorhanden) return Promise.resolve({ id: d.id, name: d.name, typ: d.typ, groesse: d.groesse, archiv: true });
+    var blob = d.blob || d;
+    var archiv = /^image\//.test(blob.type) && !d.ausArchiv;
+    return dateiSpeichern(blob, d.name, archiv).then(function (m) {
+      geschrieben.push(m.id);
+      return m;
+    });
+  }))
+    .then(dann, function () {
+      dateienLoeschen(geschrieben).catch(function () {});
+      dateiFehler();
+    })
     .then(function () { speichertGerade = false; }, function () { speichertGerade = false; });
 }
 
@@ -452,7 +624,7 @@ function doingHtml(d) {
     '<div class="doing-mitte">' +
       '<button type="button" class="doing-text" data-aktion="doing-bearbeiten" data-id="' + esc(d.id) + '">' +
         "<span>" + esc(d.text) + "</span>" +
-        (d.faellig ? '<small class="faellig">fällig ' + esc(datumText(d.faellig)) + "</small>" : "") +
+        (d.faellig ? '<small class="faellig' + (!d.erledigt && d.faellig < heuteIso() ? " ueberfaellig" : "") + '">' + ICON.kalender + "fällig " + esc(datumText(d.faellig)) + "</small>" : "") +
         (offen && d.notiz ? "<small>" + esc(d.notiz) + "</small>" : "") +
         (offen && d.prompt ? '<em class="marke">Promt</em>' : "") +
       "</button>" +
@@ -486,7 +658,9 @@ function doingsHtml() {
   var liste = pr.doings.filter(function (d) { return !(ui.nurOffene && d.erledigt); });
   if (!pr.doings.length) h += '<p class="leer">Noch nichts zu tun. Neues Doing oben eintragen.</p>';
   else if (!liste.length) h += '<p class="leer">Alles erledigt.</p>';
-  else h += '<ul class="doings">' + liste.map(doingHtml).join("") + "</ul>";
+  /* Erledigte wandern nach unten; innerhalb jeder Gruppe bleibt die Reihenfolge */
+  else h += '<ul class="doings">' + liste.filter(function (d) { return !d.erledigt; })
+    .concat(liste.filter(function (d) { return d.erledigt; })).map(doingHtml).join("") + "</ul>";
 
   return h + "</div></section>";
 }
@@ -669,7 +843,6 @@ function notizenSeiteHtml() {
       '<div class="formular-knoepfe"><span class="spacer"></span><button type="submit" class="knopf">Speichern</button></div>' +
     "</form></div></section>";
 
-  h += '<div class="werkzeug"><button type="button" class="chip" data-aktion="archiv-auf">Bilderarchiv</button></div>';
 
   if (!pr.notizen.length) return h + '<p class="leer">Noch keine Notizen. Gedanken, Lieder, Links und Fotos landen hier.</p>';
   return h + '<ul class="notiz-liste">' + pr.notizen.map(notizKarte).join("") + "</ul>";
@@ -843,12 +1016,20 @@ function blobZuDatenUrl(blob) {
 /* Die Sicherung enthält die Daten und alle Dateien (als Datenadresse). */
 function exportiere() {
   dateienAlle().then(function (alle) {
-    return Promise.all(alle.map(function (satz) {
-      return blobZuDatenUrl(satz.blob).then(function (url) {
-        return { id: satz.id, name: satz.name, typ: satz.typ, groesse: satz.groesse, archiv: !!satz.archiv, daten: url };
+    /* Base64 macht die Datei rund ein Drittel größer. Ab einer großen Menge vorher fragen. */
+    var mb = Math.round(alle.reduce(function (summe, s) { return summe + (s.groesse || 0); }, 0) / 1e6);
+    if (mb > 150 && !confirm("Die Sicherung wird rund " + Math.round(mb * 1.4) + " MB groß. Das kann auf dem Handy lange dauern oder fehlschlagen. Trotzdem sichern?")) return null;
+    /* Dateien nacheinander lesen, damit nicht alle gleichzeitig im Speicher liegen */
+    var teile = [];
+    return alle.reduce(function (kette, satz) {
+      return kette.then(function () {
+        return blobZuDatenUrl(satz.blob).then(function (url) {
+          teile.push({ id: satz.id, name: satz.name, typ: satz.typ, groesse: satz.groesse, archiv: !!satz.archiv, erstellt: satz.erstellt || 0, daten: url });
+        });
       });
-    }));
+    }, Promise.resolve()).then(function () { return teile; });
   }).then(function (dateien) {
+    if (!dateien) return;
     var sicherung = { fassung: daten.fassung, projekte: daten.projekte, dateien: dateien };
     var blob = new Blob([JSON.stringify(sicherung)], { type: "application/json" });
     var url = URL.createObjectURL(blob);
@@ -890,11 +1071,14 @@ function importiere(datei) {
           return d && typeof d.id === "string" && typeof d.daten === "string" && /^data:/i.test(d.daten);
         }).map(function (d) {
           return fetch(d.daten).then(function (antwort) { return antwort.blob(); }).then(function (blob) {
-            return { id: d.id, name: String(d.name || "Datei"), typ: String(d.typ || blob.type), groesse: blob.size, archiv: !!d.archiv, erstellt: Date.now(), blob: blob };
+            return { id: d.id, name: String(d.name || "Datei"), typ: String(d.typ || blob.type), groesse: blob.size, archiv: !!d.archiv, erstellt: Number(d.erstellt) || Date.now(), blob: blob };
           });
         })).then(dateienErsetzen)
       : Promise.resolve();
     dateienFertig.then(function () {
+      /* Vorschaubilder des alten Standes verwerfen, sonst zeigen gleiche Kennungen das alte Bild */
+      Object.keys(vorschauUrls).forEach(function (k) { URL.revokeObjectURL(vorschauUrls[k]); });
+      vorschauUrls = {};
       daten = neu;
       ui.aktivesProjekt = "";
       speichereUi();
@@ -964,6 +1148,7 @@ function schliesseSheet() {
   s.hidden = true;
   s.innerHTML = "";
   offenerSheet = null;
+  zeichnung.verlauf = [];   /* Rückgängig-Schritte der Skizze freigeben */
   document.body.style.overflow = "";
 }
 
@@ -980,6 +1165,8 @@ var fensterStart = "";
 function schliesseSheetNachFrage() {
   var s = document.getElementById("sheet");
   if (offenerSheet === "formular" && fensterWerte(s) !== fensterStart && !confirm("Änderungen verwerfen?")) return;
+  var zc = s.querySelector(".zeichen-flaeche");
+  if (offenerSheet === "zeichnen" && zc && !skizzeLeer(zc) && !confirm("Skizze verwerfen?")) return;
   schliesseSheet();
 }
 
@@ -1224,6 +1411,14 @@ document.addEventListener("click", function (e) {
       if (d) {
         d.erledigt = !d.erledigt;
         aktualisiere();
+        /* Abhaken ist schnell passiert: kurz anbieten, es rückgängig zu machen */
+        zeigeRueckgaengig(d.erledigt ? "Erledigt: " + d.text : "Wieder offen: " + d.text, function () {
+          var zurueck = findeDoing(id);
+          if (zurueck) {
+            zurueck.erledigt = !zurueck.erledigt;
+            aktualisiere();
+          }
+        });
       }
       break;
     }
@@ -1290,6 +1485,42 @@ document.addEventListener("click", function (e) {
       zeigeGeteilte();
       break;
     }
+    case "zeichnen-auf":
+      oeffneZeichnen();
+      break;
+    case "zeichen-werkzeug":
+      zeichnung.werkzeug = el.getAttribute("data-wert");
+      zeichnungWerkzeuge("zeichen-werkzeug", zeichnung.werkzeug);
+      break;
+    case "zeichen-farbe":
+      zeichnung.farbe = el.getAttribute("data-wert");
+      zeichnung.werkzeug = "stift";
+      zeichnungWerkzeuge("zeichen-werkzeug", "stift");
+      zeichnungWerkzeuge("zeichen-farbe", zeichnung.farbe);
+      break;
+    case "zeichen-breite":
+      zeichnung.breite = ZEICHEN_BREITEN[Number(el.getAttribute("data-wert"))].px;
+      zeichnungWerkzeuge("zeichen-breite", el.getAttribute("data-wert"));
+      break;
+    case "zeichen-zurueck": {
+      var zc = document.querySelector("#sheet .zeichen-flaeche");
+      var vorher = zeichnung.verlauf.pop();
+      if (zc && vorher) zc.getContext("2d").putImageData(vorher, 0, 0);
+      break;
+    }
+    case "zeichen-leeren": {
+      var lc = document.querySelector("#sheet .zeichen-flaeche");
+      if (lc) {
+        var lctx = lc.getContext("2d");
+        zeichnung.verlauf.push(lctx.getImageData(0, 0, lc.width, lc.height));
+        lctx.fillStyle = "#ffffff";
+        lctx.fillRect(0, 0, lc.width, lc.height);
+      }
+      break;
+    }
+    case "zeichen-uebernehmen":
+      zeichnungUebernehmen();
+      break;
     case "archiv-auf":
       oeffneArchiv(el.getAttribute("data-kontext") || null);
       break;
@@ -1297,18 +1528,14 @@ document.addEventListener("click", function (e) {
       var wk = el.getAttribute("data-kontext");
       dateiHolen(id).then(function (satz) {
         if (!satz) return;
-        wartend[wk].push({ name: satz.name, blob: satz.blob });
+        wartend[wk].push({ id: satz.id, name: satz.name, typ: satz.typ, groesse: satz.groesse, vorhanden: true });
         schliesseSheet();
         aktualisiereWartend(wk);
       }).catch(dateiFehler);
       break;
     }
     case "archiv-loeschen":
-      if (confirm("Dieses Bild aus dem Archiv löschen? Notizen mit einer Kopie davon bleiben unverändert.")) {
-        dateienLoeschen([id]).then(function () {
-          oeffneArchiv(el.getAttribute("data-kontext") || null);
-        }, dateiFehler);
-      }
+      archivBildEntfernen(id, el.getAttribute("data-kontext") || null);
       break;
     case "wartend-entfernen": {
       var kontext = el.getAttribute("data-kontext");
@@ -1321,8 +1548,10 @@ document.addEventListener("click", function (e) {
       var eintrag = art === "doing" ? findeDoing(id) : findeNotiz(id);
       var aid = el.getAttribute("data-anhang");
       if (eintrag && confirm("Diese Datei entfernen?")) {
+        var weg = eintrag.anhaenge.find(function (a) { return a.id === aid; });
         eintrag.anhaenge = eintrag.anhaenge.filter(function (a) { return a.id !== aid; });
-        dateienLoeschen([aid]).catch(function () {});
+        /* Bilder aus dem Archiv bleiben im Archiv, nur der Verweis fällt weg */
+        if (weg && !weg.archiv) dateienLoeschen([aid]).catch(function () {});
         aktualisiere();
         aktualisiereAnhangBereich(id);
       }
@@ -1412,6 +1641,7 @@ window.addEventListener("beforeinstallprompt", function (e) {
   installAngebot = e;
   zeigeInstallKnopf();
 });
+
 window.addEventListener("appinstalled", function () {
   installAngebot = null;
   zeigeInstallKnopf();

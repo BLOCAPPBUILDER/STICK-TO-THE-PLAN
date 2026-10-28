@@ -46,7 +46,8 @@ function saeubereAnhaenge(roh) {
       id: a.id,
       name: a.name.slice(0, 200),
       typ: String(a.typ || "application/octet-stream"),
-      groesse: Number(a.groesse) || 0
+      groesse: Number(a.groesse) || 0,
+      archiv: !!a.archiv
     };
   });
 }
@@ -231,9 +232,10 @@ function zeitSchiebe(projekt, id, richtung) {
   return true;
 }
 
-/* Kennungen der Dateien an einem Doing oder einer Notiz. */
+/* Kennungen der Dateien an einem Doing oder einer Notiz, die beim Löschen mit weg sollen.
+   Bilder aus dem Bilderarchiv bleiben erhalten, auch wenn die Notiz gelöscht wird. */
 function anhangIds(eintrag) {
-  return (eintrag.anhaenge || []).map(function (a) { return a.id; });
+  return (eintrag.anhaenge || []).filter(function (a) { return !a.archiv; }).map(function (a) { return a.id; });
 }
 
 /* Kennungen aller Dateien eines Projekts (für das Löschen). */

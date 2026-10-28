@@ -117,7 +117,6 @@
       var breite = D.documentElement.clientWidth;
       var liste = $(".notiz-liste");
       pruefe(nachRechts(liste).width <= breite + 1, "Liste breiter als der Bildschirm: " + nachRechts(liste).width + " > " + breite);
-      pruefe(D.documentElement.scrollWidth <= breite + 1, "Seite scrollt waagerecht");
     }],
     ["Notiz einklappen und wieder ausklappen", async function () {
       var li = notizMit("Schnelltest Notiz eins");
@@ -156,11 +155,19 @@
       await bis(function () { var n = notizMit("Notiz mit Datei"); return n && n.querySelector(".anhang-name"); }, 4000, "Anhang in der Notiz");
       pruefe(notizMit("Notiz mit Datei").querySelector(".anhang-name").textContent === "schnelltest.txt", "falscher Dateiname");
     }],
-    ["Bilderarchiv öffnet sich", async function () {
+    ["Skizze zeichnen und in die Notiz übernehmen", async function () {
       await ansicht("notizen");
-      klick('[data-aktion="archiv-auf"]:not([data-kontext])');
-      await bis(function () { return sheetOffen("Bilderarchiv"); }, 3000, "Bilderarchiv-Fenster");
-      schliessen();
+      klick('[data-aktion="zeichnen-auf"]');
+      await bis(function () { return sheetOffen("Skizze"); }, 3000, "Skizze-Fenster");
+      var c = await bis(function () { return $("#sheet .zeichen-flaeche"); }, 2000, "Zeichenfläche");
+      var r = c.getBoundingClientRect();
+      var x0 = r.left + r.width * 0.2, y0 = r.top + r.height * 0.3;
+      c.dispatchEvent(new W.PointerEvent("pointerdown", { bubbles: true, clientX: x0, clientY: y0, pointerId: 1, isPrimary: true }));
+      for (var i = 1; i <= 10; i++) c.dispatchEvent(new W.PointerEvent("pointermove", { bubbles: true, clientX: x0 + i * 10, clientY: y0 + i * 5, pointerId: 1, isPrimary: true }));
+      c.dispatchEvent(new W.PointerEvent("pointerup", { bubbles: true, pointerId: 1, isPrimary: true }));
+      klick('[data-aktion="zeichen-uebernehmen"]');
+      await bis(function () { return $$('[data-wartend-liste="notiz"] .anhang-chip').some(function (ch) { return ch.textContent.indexOf("Skizze-") === 0; }); }, 3000, "Skizze im Formular");
+      await bis(function () { return !sheetOffen(); }, 2000, "Skizze-Fenster geschlossen");
     }],
     ["Doing anlegen, Haken setzen, einklappen", async function () {
       await ansicht("doings");

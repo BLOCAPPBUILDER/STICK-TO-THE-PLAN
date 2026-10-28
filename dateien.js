@@ -33,7 +33,7 @@ function dbVorgang(speicher, modus, vorgang) {
 
 /* Das, was im Eintrag steht: ohne den Inhalt der Datei. */
 function anhangVon(satz) {
-  return { id: satz.id, name: satz.name, typ: satz.typ, groesse: satz.groesse };
+  return { id: satz.id, name: satz.name, typ: satz.typ, groesse: satz.groesse, archiv: !!satz.archiv };
 }
 
 /* archiv: true für Bilder im Bilderarchiv. Notizen bekommen eigene Kopien, damit Löschen im Archiv nichts kaputt macht. */
@@ -94,7 +94,8 @@ function dateienErsetzen(liste) {
 /* Geteiltes aus anderen Apps: der Service Worker legt Dateien und Eintrag ab, die App macht daraus Notizen. */
 /* Geteiltes wird nur als Notiz vorgemerkt, nicht ins Bilderarchiv. Die App fragt nach dem Projekt. */
 function teilenAblegen(titel, text, link, dateien) {
-  return Promise.all(dateien.map(function (d) { return dateiSpeichern(d, d.name, false); })).then(function (anhaenge) {
+  /* Bilder liegen nur einmal, im Bilderarchiv. Andere Dateien gehören zur Notiz. */
+  return Promise.all(dateien.map(function (d) { return dateiSpeichern(d, d.name, /^image\//.test(d.type)); })).then(function (anhaenge) {
     var satz = { id: neueId(), erstellt: Date.now(), titel: titel, text: text, link: link, anhaenge: anhaenge };
     return dbVorgang(TEIL_STORE, "readwrite", function (s) { return s.put(satz); });
   });

@@ -477,6 +477,35 @@ label{ display:grid; gap:6px; font-size:13px; color:var(--text-dim); }
 /* Langdruck-Menü: große Zeilen, Löschen in Rot */
 .aktion-liste{ display:grid; gap:8px; }
 
+/* Rückgängig-Hinweis nach dem Abhaken */
+.toast{
+  position:fixed; z-index:30; left:50%; transform:translateX(-50%);
+  bottom:calc(96px + env(safe-area-inset-bottom));
+  display:flex; align-items:center; gap:12px; max-width:calc(100% - 32px);
+  padding:6px 6px 6px 16px; border-radius:999px;
+  background:var(--fest); border:1px solid var(--border); box-shadow:var(--schatten);
+  font-size:14px;
+}
+.toast span{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.toast button{ flex:none; color:var(--accent-ink); font-weight:700; }
+
+/* Fälligkeitsdatum mit Kalender-Symbol */
+.doing-text .faellig{ display:inline-flex; align-items:center; gap:6px; }
+.doing-text .faellig.ueberfaellig{ font-weight:700; }
+.doing-text .faellig.ueberfaellig::after{ content:"überfällig"; margin-left:4px; padding:1px 7px; border-radius:999px; border:1px solid color-mix(in srgb, var(--accent) 55%, transparent); font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
+.fertig .doing-text .faellig.ueberfaellig::after{ display:none; }
+.doing-text .faellig svg{ width:16px; height:16px; }
+
+/* Skizze: Werkzeuge, Farben, Stiftdicken und Zeichenfläche */
+.zeichen-leiste{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.zeichen-farben{ display:flex; gap:8px; flex-wrap:wrap; }
+.farbe{ position:relative; width:40px; height:40px; padding:0; border-radius:50%; border:2px solid color-mix(in srgb, var(--text) 40%, transparent); cursor:pointer; }
+.farbe::after{ content:""; position:absolute; inset:-4px; }
+.farbe[aria-pressed="true"]{ outline:2px solid var(--accent); outline-offset:3px; }
+.zeichen-flaeche{ display:block; width:auto; max-width:100%; max-height:48vh; height:auto; aspect-ratio:4 / 5; margin:0 auto; border-radius:16px; border:1px solid var(--border); background:#ffffff; touch-action:none; }
+.doing-text .faellig{ flex-wrap:wrap; }
+.fertig .doing-text .faellig{ color:var(--erledigt) !important; }
+
 /* Bilderarchiv: Kacheln mit Vorschau */
 .archiv-raster{ list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); gap:10px; }
 .archiv-kachel{ display:grid; gap:6px; min-width:0; }

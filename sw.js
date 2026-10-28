@@ -6,11 +6,12 @@
 
 importScripts("./kern.js", "./dateien.js");
 
-var FASSUNG = "2026-10-27-3";
+var FASSUNG = "2026-10-28-6";
 var SPEICHER = "stick-to-the-plan-" + FASSUNG;
 var GRUNDGERUEST = [
   "./", "./index.html", "./app.css", "./daten.js", "./kern.js", "./dateien.js", "./app.js",
-  "./manifest.json", "./icon.svg", "./icon-192.png", "./icon-512.png", "./privacy.html"
+  "./manifest.json", "./icon.svg", "./icon-180.png", "./icon-192.png", "./icon-512.png", "./icon-maskable-512.png",
+  "./img/dunkel-hintergrund.jpg", "./img/hell-hintergrund.jpg", "./privacy.html"
 ];
 var TEIL_ZIEL = /\/teilen-ziel$/;
 
@@ -73,7 +74,8 @@ self.addEventListener("fetch", function (e) {
       .catch(function () {
         /* Offline: Adresse ohne Suchteil (z. B. ?geteilt=ok) und sonst die Startseite */
         return caches.match(e.request, { ignoreSearch: true }).then(function (treffer) {
-          return treffer || caches.match("./index.html");
+          /* Nur Seitenaufrufe bekommen die Startseite, fehlende Skripte und Bilder nicht */
+          return treffer || (e.request.mode === "navigate" ? caches.match("./index.html") : Response.error());
         });
       })
   );

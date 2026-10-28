@@ -116,6 +116,9 @@
   pruefe("Anhang-Kennungen eines Projekts", anhangIdsVon(mitDateien.projekte[0]).join(",") === "f1,f2,f3");
   pruefe("Anhang-Kennungen aller Projekte", alleAnhangIds(mitDateien).length === 4);
   pruefe("Anhang-Kennungen eines Eintrags ohne Anhang leer", anhangIds({ id: "k" }).length === 0);
+  pruefe("Bilder aus dem Archiv bleiben beim Löschen erhalten", anhangIds({ anhaenge: [{ id: "a", archiv: true }, { id: "b", archiv: false }] }).join(",") === "b");
+  var mitArchiv = saeubereDaten({ projekte: [{ id: "p", doings: [], notizen: [{ id: "n", text: "x", anhaenge: [{ id: "f", name: "f.jpg", typ: "image/jpeg", groesse: 1, archiv: true }] }] }] });
+  pruefe("Import behält das Archiv-Kennzeichen", mitArchiv.projekte[0].notizen[0].anhaenge[0].archiv === true);
 
   // Kennungen und Vorlagen
   var ids = {};
